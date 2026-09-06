@@ -18,7 +18,7 @@
 | `CELLFENCE_ARTIFACT_OUTSIDE_OWNERSHIP` | A non-external produced artifact lane is outside the producer's owned paths |
 | `CELLFENCE_SYMLINK_TARGET_OUTSIDE_OWNERSHIP` | A governed symlink points outside its owning cell, outside the repository, or cannot be resolved |
 | `CELLFENCE_PRIVATE_IMPORT` | Cross-cell import of private implementation |
-| `CELLFENCE_UNDECLARED_CONSUMER` | Cross-cell dependency missing from the consumer manifest |
+| `CELLFENCE_UNDECLARED_CONSUMER` | Cross-cell dependency missing from the consumer manifest. [Walkthrough](#cellfence_undeclared_consumer-walkthrough) |
 | `CELLFENCE_PUBLIC_ENTRY_MISSING` | Declared public entry does not exist |
 | `CELLFENCE_PUBLIC_SYMBOL_MISMATCH` | Manifest symbols do not match actual public exports |
 | `CELLFENCE_UNDECLARED_ARTIFACT` | Artifact lane consumption was not declared |
@@ -78,6 +78,38 @@
 | `CELLFENCE_DOC_UNKNOWN_CELL` | A stamped architecture document references a cell that is not in the manifest |
 | `CELLFENCE_DOC_SURFACE_STALE` | A stamped architecture document no longer matches the current cell public surface |
 | `CELLFENCE_MUTATION_SCORE_BELOW_THRESHOLD` | Mutation testing score is below the configured minimum |
+
+## `CELLFENCE_UNDECLARED_CONSUMER` walkthrough
+
+The
+[`undeclared-consumer`](../fixtures/invalid/undeclared-consumer/README.md)
+fixture demonstrates a public cross-cell import that lacks the required
+dependency declaration. Its
+[`src/consumer/public.ts`](../fixtures/invalid/undeclared-consumer/src/consumer/public.ts)
+imports `producerValue` from the producer's declared
+[`src/producer/public.ts`](../fixtures/invalid/undeclared-consumer/src/producer/public.ts)
+entry. The target is public, so this is not a private-import violation.
+
+The fixture's
+[`cellfence.manifest.json`](../fixtures/invalid/undeclared-consumer/cellfence.manifest.json)
+owns the files with separate `consumer` and `producer` cells, but the
+consumer's `consumes` list is empty. CellFence therefore reports
+`CELLFENCE_UNDECLARED_CONSUMER`: using a producer's public entry does not
+replace the manifest's explicit cross-cell dependency contract.
+
+Build the CLI and reproduce the finding from the repository root:
+
+```bash
+npm run build
+node packages/cli/dist/index.js check \
+  --root fixtures/invalid/undeclared-consumer \
+  --format markdown
+```
+
+The intentionally invalid fixture exits unsuccessfully and reports
+`CELLFENCE_UNDECLARED_CONSUMER` at `src/consumer/public.ts:1`. Its
+[`expected-result.json`](../fixtures/invalid/undeclared-consumer/expected-result.json)
+also records the expected `CELLFENCE_OWNERSHIP_COVERAGE_DISABLED` warning.
 
 
 
