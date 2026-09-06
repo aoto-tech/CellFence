@@ -2242,16 +2242,20 @@ test("bug #50 HTTP URL resolution preserves the authority and base", (testContex
     assert.equal(checked.ok, false);
     assert(checked.findings.some((finding) => finding.ruleId === "CELLFENCE_UNDECLARED_RESOURCE_ACCESS" && finding.details.selector === new URL(input, base).href));
   }
-  for (const expression of ["new URL('/health', unknownBase)", "new URL('/health')", "new URL('/health', 'broken')", "new URL()"] ) {
+  for (const expression of ["new URL('/health', unknownBase)", "new URL('/health')", "new URL('/health', 'broken')", "new URL()", "new URL"] ) {
     write("src/consumer/http.ts", `fetch(${expression});`);
     assert(checkRepository({ rootDir }).findings.some((finding) => finding.ruleId === "CELLFENCE_UNRESOLVED_RESOURCE_ACCESS"));
   }
+  manifest.cells[1].resourceContracts[0].selectors = ["https://allowed.example/health"];
+  write("cellfence.manifest.json", manifest);
+  write("src/consumer/http.ts", "const endpoint = flag ? '/health' : 'http://['; fetch(new URL(endpoint, 'https://allowed.example'));");
+  assert(checkRepository({ rootDir }).findings.some((finding) => finding.ruleId === "CELLFENCE_UNRESOLVED_RESOURCE_ACCESS"));
 });
 
 test("bug #51 resource candidate limits fail closed without losing alternatives", (testContext) => {
   const { rootDir, write, manifest } = bugFixture(testContext);
   const urls = Array.from({ length: 17 }, (_, index) => `https://host${index}.example`);
-  const conditional = (values) => values.slice(0, -1).map((value, index) => `pick === ${index} ? ${JSON.stringify(value)} : `).join("") + JSON.stringify(values.at(-1));
+  const conditional = (values, choice = "pick") => values.slice(0, -1).map((value, index) => `${choice} === ${index} ? ${JSON.stringify(value)} : `).join("") + JSON.stringify(values.at(-1));
   manifest.cells[1].resourceContracts = [{ id: "http", kind: "http", access: ["call"], selectors: urls.slice(0, 16) }];
   write("cellfence.manifest.json", manifest);
   for (const local of [false, true]) {
@@ -2266,6 +2270,8 @@ test("bug #51 resource candidate limits fail closed without losing alternatives"
     write("src/consumer/http.ts", `${local ? "function run(pick) {" : ""}const prefix = ${conditional(urls.slice(0, 4))}; const suffix = ${conditional(["/a", "/b", "/c", "/d", "/e"])}; const endpoint = prefix + suffix; fetch(endpoint);${local ? "}" : ""}`);
     assert(checkRepository({ rootDir }).findings.some((finding) => finding.ruleId === "CELLFENCE_UNRESOLVED_RESOURCE_ACCESS"));
   }
+  write("src/consumer/http.ts", `const endpoint = ${conditional(["/a", "/b", "/c", "/d"], "pathChoice")}; const origin = ${conditional(urls.slice(0, 5), "hostChoice")}; fetch(new URL(endpoint, origin));`);
+  assert(checkRepository({ rootDir }).findings.some((finding) => finding.ruleId === "CELLFENCE_UNRESOLVED_RESOURCE_ACCESS"));
 });
 
 test("bug #52 supported Fastify route methods do not depend on scan hints", (testContext) => {

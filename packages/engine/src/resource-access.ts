@@ -1200,7 +1200,8 @@ function httpSelectorValues(sourceFile: ts.SourceFile, usageNode: ts.Node, expre
   if (!expression) return [];
   const unwrapped = unwrapExpression(expression);
   if (ts.isNewExpression(unwrapped) && expressionName(unwrapped.expression) === "URL") {
-    const [input, base] = unwrapped.arguments || [];
+    const input = unwrapped.arguments?.[0];
+    const base = unwrapped.arguments?.[1];
     const inputs = httpSelectorValues(sourceFile, usageNode, input, constants);
     const bases = base ? httpSelectorValues(sourceFile, usageNode, base, constants) : [undefined];
     const selectors: string[] = [];

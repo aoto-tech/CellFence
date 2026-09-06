@@ -3556,7 +3556,7 @@ test("bug #49 createRequire origins agree with Node and unknown origins fail clo
   write("src/producer/private.cjs", "module.exports = 42;");
   write("src/consumer/private.cjs", "module.exports = 0;");
   const origin = path.join(rootDir, "src/producer/public.ts");
-  const bases = [JSON.stringify(origin), JSON.stringify(pathToFileURL(origin).href), "new URL('../producer/public.ts', import.meta.url)"];
+  const bases = [JSON.stringify(origin), JSON.stringify(pathToFileURL(origin).href), "new URL('../producer/public.ts', import.meta.url)", `new URL(${JSON.stringify(pathToFileURL(origin).href)})`];
   for (const base of bases) {
     const filePath = write("src/consumer/load.mjs", `import { createRequire } from 'node:module'; const loader = createRequire(${base}); const alias = loader; console.log(alias('./private.cjs'));`);
     const runtime = spawnSync(process.execPath, [filePath], { encoding: "utf8" });
@@ -3566,13 +3566,13 @@ test("bug #49 createRequire origins agree with Node and unknown origins fail clo
     assert.equal(checked.ok, false);
     assert(checked.findings.some((finding) => finding.ruleId === "CELLFENCE_PRIVATE_IMPORT" && finding.details.targetPath === "src/producer/private.cjs"));
   }
-  for (const base of ["process.env.ORIGIN", "'relative/path.js'", "'https://example.invalid/a.js'", "new URL('./a.js', process.env.ORIGIN)", "'file://['"]) {
+  for (const base of ["process.env.ORIGIN", "'relative/path.js'", "'https://example.invalid/a.js'", "new URL('./a.js', process.env.ORIGIN)", "'file://['", "new URL", "new URL(candidate)", "new URL('https://example.invalid/a.js')"]) {
     write("src/consumer/load.mjs", `import { createRequire } from 'node:module'; const loader = createRequire(${base}); loader('./private.cjs');`);
     const checked = checkRepository({ rootDir });
     assert.equal(checked.ok, false, base);
     assert(checked.findings.some((finding) => finding.ruleId === "CELLFENCE_UNSUPPORTED_DYNAMIC_REQUIRE"), base);
   }
-  for (const invocation of ["loader.call(null, './private.cjs')", "loader.apply(null, ['./private.cjs'])", "Reflect.apply(loader, null, ['./private.cjs'])"]) {
+  for (const invocation of ["loader.call(null, './private.cjs')", "loader.apply(null, ['./private.cjs'])", "Reflect.apply(loader, null, ['./private.cjs'])", `createRequire(${bases[2]})('./private.cjs')`, "const bound = loader.bind(null); bound('./private.cjs')"]) {
     const filePath = write("src/consumer/load.mjs", `import { createRequire } from 'node:module'; const loader = createRequire(${bases[2]}); ${invocation};`);
     const warnings = [];
     const references = extractImports(context(rootDir), filePath, warnings);
@@ -3591,7 +3591,12 @@ test("bug #55 assigned or escaped require aliases are explicit unresolved analys
     write("src/consumer/load.cjs", source);
     const checked = checkRepository({ rootDir });
     assert.equal(checked.ok, false, source);
-    assert(checked.findings.some((finding) => finding.ruleId === "CELLFENCE_UNSUPPORTED_DYNAMIC_REQUIRE"));
+    const finding = checked.findings.find((finding) => finding.ruleId === "CELLFENCE_UNSUPPORTED_DYNAMIC_REQUIRE");
+    assert(finding);
+    assert.equal(finding.details.line, 1);
+    assert.match(finding.message, source.includes("consume")
+      ? /computed escaped require\(\) cannot be resolved statically at line 1/
+      : /assigned require alias cannot be resolved statically at line 1/);
   }
   write("src/consumer/load.cjs", "function harmless(require) { let load; load = require; consume(load); }\n");
   assert.equal(checkRepository({ rootDir }).ok, true);
