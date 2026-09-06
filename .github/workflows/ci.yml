@@ -142,8 +142,10 @@ jobs:
           node scripts/acceptance-record-verify.mjs --record "$acceptance_dir/record.json" --graph "$acceptance_dir/evidence-graph.json" --out "$acceptance_dir/verify-report.json"
       - name: Smoke test bundled baseline gate action
         run: |
+          event_path="$RUNNER_TEMP/cellfence-empty-event.json"
+          printf '{}' > "$event_path"
           set +e
-          output="$(node packages/github-action-baseline-gate/dist/index.js 2>&1)"
+          output="$(GITHUB_EVENT_NAME=push GITHUB_EVENT_PATH="$event_path" node packages/github-action-baseline-gate/dist/index.js 2>&1)"
           status="$?"
           set -e
           if [ "$status" -ne 1 ]; then
