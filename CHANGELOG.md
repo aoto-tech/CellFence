@@ -4,6 +4,14 @@
 
 - No unreleased changes.
 
+## 0.4.0 - 2026-09-06
+
+- Breaking change: change CellFence findings toward evidence-bound diagnostic explanations instead of remediation recipes, so reports describe the rule, affected cells, paths, and observed basis for the decision without suggesting design fixes.
+- Add a reproducible adversarial benchmark harness with task schemas, oracle fixtures, governance profiles, replay fixtures, and result validation for third-party verification.
+- Add benchmark coverage for manifest relaxation, private import temptation, undeclared dependency temptation, baseline-waiver escape, and valid public imports.
+- Refresh the signed CellFence self-baseline for the new benchmark and diagnostic surface.
+- Harden release and CI verification around exact-ref mutation auditing, npm publish workspace discovery, self-check evidence, and benchmark regression tests.
+
 ## 0.3.0 - 2026-08-23
 
 - Breaking changes since 0.2.1 (migration steps below):

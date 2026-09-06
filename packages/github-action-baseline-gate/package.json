@@ -1,6 +1,6 @@
 {
   "name": "@cellfence/github-action-baseline-gate",
-  "version": "0.0.1",
+  "version": "0.4.0",
   "description": "Private bundled GitHub Action that gates CellFence baseline changes on baseline-owner approval.",
   "private": true,
   "main": "dist/index.js",
@@ -13,7 +13,7 @@
   "dependencies": {
     "@actions/core": "^3.0.1",
     "@actions/github": "^9.1.1",
-    "@cellfence/schema": "0.3.0"
+    "@cellfence/schema": "0.4.0"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
