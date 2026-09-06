@@ -3549,6 +3549,8 @@ test("bug #48 internal declarations preserve adjacent public signatures", (testC
     write("src/producer/public.ts", fs.readFileSync(filePath, "utf8").replace("api = 1", "api = 'changed'"));
     assert.notEqual(publicSurfaceHash(filePath), first);
   }
+  write("src/producer/public.ts", "export declare const api: string\n/** @internal */ const hidden = 1;export declare const stable: number;");
+  assert.equal(declarationTextForRoot(filePath, declarationEmitCompilerOptions(filePath)), "export declare const api: string;\nexport declare const stable: number;\n");
 });
 
 test("bug #49 createRequire origins agree with Node and unknown origins fail closed", (testContext) => {
@@ -3566,12 +3568,14 @@ test("bug #49 createRequire origins agree with Node and unknown origins fail clo
     assert.equal(checked.ok, false);
     assert(checked.findings.some((finding) => finding.ruleId === "CELLFENCE_PRIVATE_IMPORT" && finding.details.targetPath === "src/producer/private.cjs"));
   }
-  for (const base of ["process.env.ORIGIN", "'relative/path.js'", "'https://example.invalid/a.js'", "new URL('./a.js', process.env.ORIGIN)", "'file://['", "new URL", "new URL(candidate)", "new URL('https://example.invalid/a.js')"]) {
+  for (const base of ["process.env.ORIGIN", "'relative/path.js'", "'https://example.invalid/a.js'", "new URL('./a.js', process.env.ORIGIN)", "'file://['", "new URL", "new URL(candidate)", "new URL(candidate, import.meta.url)", `new URL(${bases[1]}, process.env.ORIGIN)`, "new URL('https://example.invalid/a.js')", "import.meta.resolve"]) {
     write("src/consumer/load.mjs", `import { createRequire } from 'node:module'; const loader = createRequire(${base}); loader('./private.cjs');`);
     const checked = checkRepository({ rootDir });
     assert.equal(checked.ok, false, base);
     assert(checked.findings.some((finding) => finding.ruleId === "CELLFENCE_UNSUPPORTED_DYNAMIC_REQUIRE"), base);
   }
+  write("src/consumer/load.mjs", "import { createRequire } from 'node:module'; function load() { const loader = createRequire(new.target.url); loader('./private.cjs'); }");
+  assert(checkRepository({ rootDir }).findings.some((finding) => finding.ruleId === "CELLFENCE_UNSUPPORTED_DYNAMIC_REQUIRE"));
   for (const invocation of ["loader.call(null, './private.cjs')", "loader.apply(null, ['./private.cjs'])", "Reflect.apply(loader, null, ['./private.cjs'])", `createRequire(${bases[2]})('./private.cjs')`, "const bound = loader.bind(null); bound('./private.cjs')"]) {
     const filePath = write("src/consumer/load.mjs", `import { createRequire } from 'node:module'; const loader = createRequire(${bases[2]}); ${invocation};`);
     const warnings = [];

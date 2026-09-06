@@ -1114,16 +1114,17 @@ export function extractImports(
     if (literal !== undefined) {
       try {
         return literal.startsWith("file:") ? fileURLToPath(literal) : path.isAbsolute(literal) ? literal : undefined;
-      } catch { return undefined; }
+      } catch { /* Invalid file URLs fall through to the unresolved result below. */ }
     }
     if (ts.isNewExpression(unwrapped) && ts.isIdentifier(unwrapped.expression)
       && unwrapped.expression.text === "URL" && bindingFor(scope, "URL") === undefined) {
-      const [input, base] = unwrapped.arguments || [];
+      const input = unwrapped.arguments?.[0];
+      const base = unwrapped.arguments?.[1];
       const inputValue = staticModuleSpecifier(scope, input);
       const basePath = requireOrigin(scope, base);
       if (inputValue === undefined || (base && basePath === undefined)) return undefined;
       try { return fileURLToPath(new URL(inputValue, basePath ? pathToFileURL(basePath) : undefined)); }
-      catch { return undefined; }
+      catch { /* Invalid URL combinations fall through to the unresolved result below. */ }
     }
     return undefined;
   }
