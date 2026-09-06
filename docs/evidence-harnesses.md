@@ -2,6 +2,8 @@
 
 CellFence keeps product checks separate from evidence collection. These harnesses make real-repository and external-oracle measurements reproducible; they do not turn unlabeled findings into precision claims.
 
+For a compact map of current, historical, and machine-readable research artifacts, see [docs/research/README.md](research/README.md).
+
 The SARIF gate always validates output against the vendored official OASIS SARIF 2.1.0 Errata 01 schema and compares every result with CellFence JSON output. A separately provisioned command-line validator is optional additional evidence; CI retains all oracle reports even when one oracle fails.
 
 Analyzer descriptors are trusted, pre-provisioned executable code. The harness never enables a shell and never performs a target-repository install itself; argument screening rejects common shell, inline-code, and package-manager indirection, but it is defense in depth rather than a process sandbox. Run third-party analyzers in an external container or VM when their descriptor is not trusted.

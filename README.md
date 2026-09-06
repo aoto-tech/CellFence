@@ -74,6 +74,20 @@ npx cellfence check --format sarif > cellfence.sarif
 
 See [examples/python-service](examples/python-service) and [examples/polyglot-monorepo](examples/polyglot-monorepo).
 
+## Try it in an existing repository
+
+In a repository that already has source files, start with a local-only manifest draft:
+
+```bash
+npm install --save-dev cellfence
+npx cellfence init --no-scaffold
+npx cellfence check --format markdown
+```
+
+`init --no-scaffold` keeps onboarding honest for automation: if CellFence cannot infer a real repository shape, it exits instead of creating placeholder files or a starter manifest that looks more complete than it is. Review the generated `cellfence.manifest.json` before committing it. Inferred manifests are a starting point, not proof that every intended boundary was captured.
+
+Once the local check matches the architecture you want to enforce, decide whether the first CI step should run plain `check`, `check --changed --base origin/main`, or `baseline check` with a reviewed `cellfence.baseline.json`. Add the baseline gate when baseline or waiver files can change in pull requests. See [docs/ci.md](docs/ci.md) for the CI shape and [docs/limitations.md](docs/limitations.md) for current inference and analysis limits.
+
 ## Catch a violation in thirty seconds
 
 Two cells. `reporting` may depend on `parser`, but only through `parser`'s declared public entry.
@@ -458,6 +472,7 @@ Version 0.x is deliberately narrow: Node.js ≥ 20; one public entry per cell; r
 | Signed waivers | [docs/waivers.md](docs/waivers.md) |
 | Plugin API v1 | [docs/plugin-api.md](docs/plugin-api.md) |
 | Product evidence harnesses | [docs/evidence-harnesses.md](docs/evidence-harnesses.md) |
+| Research evidence index | [docs/research/README.md](docs/research/README.md) |
 | CI recipes | [docs/ci.md](docs/ci.md) |
 | Mutation testing | [docs/mutation-testing.md](docs/mutation-testing.md) |
 | Publishing and supply chain | [docs/publishing.md](docs/publishing.md) |

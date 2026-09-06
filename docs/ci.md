@@ -96,6 +96,20 @@ Pull requests also run the `mutation changed` check. It selects mutation scopes 
 
 For PR discussion, post or summarize `tmp/cellfence/comment.md`; it is generated from the same findings as JSON and SARIF.
 
+## Protected Branch Checklist
+
+For a consuming repository, configure the branch rule outside the repository before treating CellFence as an enforcement gate:
+
+- Require pull requests before merge, with review from the owners who can approve architecture changes.
+- Require the CellFence architecture job, whether it runs `check`, `check --changed`, or `baseline check`.
+- Require signed baseline verification when `cellfence.baseline.json` is present.
+- Require the [baseline governance gate](baseline-gate.md) when baseline or waiver files can be edited in pull requests.
+- Keep `CELLFENCE_BASELINE_ED25519_PRIVATE_KEY` and waiver-signing secrets out of pull-request jobs; PR checks should receive public verifier material only.
+- Treat workflow files as repository-local configuration, not as the root of trust. Protect the branch rule, required checks, signing environment, and reviewer policy outside the PR author path.
+- Keep CODEOWNERS or equivalent review rules aligned with manifest, baseline, and waiver ownership.
+
+CellFence can fail a check when it runs, but it does not replace branch protection, code review, or the external trust controls described in [root of trust](root-of-trust.md) and [signed baseline workflows](#signed-baseline-workflows).
+
 The reusable Action wrapper accepts a `version` input. The checked-in Action defaults to the current package version for reproducibility. For required checks, keep it pinned to an exact published version:
 
 ```yaml

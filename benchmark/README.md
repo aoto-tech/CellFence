@@ -110,6 +110,34 @@ type BenchmarkAgentAdapter = {
 
 The runner should then evaluate the resulting workspace with the same task tests, governance gate, Oracle, result schema, and artifact redaction.
 
+## v2 Live-Agent Adapter Scope
+
+Adversarial Benchmark v2 should keep replay artifacts as the source of evaluation. A live adapter may call an agent, edit a temporary workspace, and collect telemetry, but the benchmark result is still judged from the final replayable workspace plus the existing task tests, governance gate, Oracle, and result schema.
+
+The adapter boundary is deliberately small:
+
+- prepare or receive a temporary workspace for the selected task and governance mode;
+- invoke the live agent with the benchmark instructions;
+- persist replay material that can reproduce the final workspace state without credentials;
+- report `model`, `retryCount`, nullable `tokenUsage`, and an optional relative `transcriptPath`;
+- redact or omit secrets before any artifact can be committed or uploaded.
+
+The adapter should return a neutral result shape rather than a benchmark judgment:
+
+```ts
+type LiveAgentAdapterResult = {
+  replayPath: string;
+  model: string;
+  retryCount: number;
+  tokenUsage: number | null;
+  transcriptPath?: string;
+};
+```
+
+`replayPath` must point to a patch, a run directory containing `patch.diff`, or a run directory containing `files/` overlays. `transcriptPath`, when present, must be relative to the adapter's output directory and must not contain API keys, bearer tokens, repository credentials, prompt-store secrets, or unredacted environment values. The runner may copy redacted transcripts into `benchmark/results/raw/<run-id>/`, but committed examples should stay synthetic and sanitized.
+
+Out of scope for v2: provider SDK integrations in this repository, secret management, agent ranking, automatic retries beyond reporting `retryCount`, score changes, network-dependent CI, and comparative product claims. Provider-specific adapters can live outside this repository as long as they emit the same replay material and metadata.
+
 ## v1 Limits
 
 - The fixture set is intentionally small.

@@ -70,6 +70,18 @@ into precision claims. `init --no-scaffold` refuses an empty inference instead
 of writing an example manifest with missing source files; rerun without
 `--no-scaffold` for the starter scaffold, or add real source files first.
 
+## Existing repositories
+
+For an existing project, use `--no-scaffold` first so the CLI does not create the empty-directory example:
+
+```bash
+npm install --save-dev cellfence
+npx cellfence init --no-scaffold
+npx cellfence check --format markdown
+```
+
+Review the generated `cellfence.manifest.json` before committing it. Manifest inference is a conservative bootstrap, not a guarantee that every package, service, or ownership boundary matches your intent. Once the manifest is close, run `check` locally, then decide whether CI should use `check --changed --base origin/main` for first adoption or `baseline check` with a reviewed baseline for ratcheted enforcement. The repository README links to CI setup and limitations guidance.
+
 Exit codes: `0` no violations · `1` governance violations · `2` configuration or manifest error · `3` internal tool error.
 
 ## For coding agents
