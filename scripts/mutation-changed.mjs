@@ -219,13 +219,34 @@ function runScope(scope, options) {
   });
 }
 
+const mutationScopeExecutionPriority = Object.freeze(new Map([
+  ["engine-module-resolution", 100],
+  ["engine-resource-access", 95],
+  ["engine-file-index", 90],
+  ["engine-glob-overlap", 85],
+  ["trace", 80],
+  ["github-action-baseline-gate", 75],
+  ["plugin-geo-purity", 70],
+]));
+
+export function prioritizeMutationScopes(scopes) {
+  const originalOrder = new Map(scopes.map((scope, index) => [scope.id, index]));
+  return [...scopes].sort((left, right) => {
+    const priorityDelta = (mutationScopeExecutionPriority.get(right.id) ?? 0)
+      - (mutationScopeExecutionPriority.get(left.id) ?? 0);
+    if (priorityDelta !== 0) return priorityDelta;
+    return (originalOrder.get(left.id) ?? 0) - (originalOrder.get(right.id) ?? 0);
+  });
+}
+
 async function runScopes(scopes, options) {
   const executions = [];
-  const workerCount = Math.min(Math.max(1, options.jobs), scopes.length);
+  const scheduledScopes = prioritizeMutationScopes(scopes);
+  const workerCount = Math.min(Math.max(1, options.jobs), scheduledScopes.length);
   let nextIndex = 0;
   async function worker() {
-    while (nextIndex < scopes.length) {
-      const scope = scopes[nextIndex];
+    while (nextIndex < scheduledScopes.length) {
+      const scope = scheduledScopes[nextIndex];
       nextIndex += 1;
       executions.push(await runScope(scope, options));
     }
@@ -278,6 +299,83 @@ function parsePackageLock(text) {
   }
 }
 
+function parseJsonDocument(text) {
+  if (!text) return undefined;
+  try {
+    const parsed = JSON.parse(text);
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function readCurrentOrGitFile(ref, filePath, rootDir = repositoryRoot) {
+  if (isCurrentHeadRef(ref, rootDir)) {
+    const resolvedPath = path.join(rootDir, filePath);
+    return fs.existsSync(resolvedPath) ? fs.readFileSync(resolvedPath, "utf8") : undefined;
+  }
+  return readGitFile(ref, filePath, rootDir);
+}
+
+function readJsonDocument(ref, filePath, rootDir = repositoryRoot) {
+  return parseJsonDocument(readCurrentOrGitFile(ref, filePath, rootDir));
+}
+
+function isPlainRecord(value) {
+  return value && typeof value === "object" && !Array.isArray(value);
+}
+
+function changedObjectKeys(left = {}, right = {}) {
+  const keys = new Set([...Object.keys(left), ...Object.keys(right)]);
+  return [...keys].filter((key) => JSON.stringify(left[key]) !== JSON.stringify(right[key]));
+}
+
+const dependencySections = Object.freeze([
+  "dependencies",
+  "devDependencies",
+  "peerDependencies",
+  "optionalDependencies",
+]);
+
+function internalCellFenceDependencyVersionOnly(leftValue, rightValue) {
+  const left = isPlainRecord(leftValue) ? leftValue : {};
+  const right = isPlainRecord(rightValue) ? rightValue : {};
+  const keys = changedObjectKeys(left, right);
+  return keys.length > 0 && keys.every((key) => (
+    key.startsWith("@cellfence/")
+    && typeof left[key] === "string"
+    && typeof right[key] === "string"
+  ));
+}
+
+function releaseMetadataOnlyPackageRecordChange(leftRecord, rightRecord) {
+  if (!isPlainRecord(leftRecord) || !isPlainRecord(rightRecord)) return false;
+  const changedKeys = changedObjectKeys(leftRecord, rightRecord);
+  if (changedKeys.length === 0) return true;
+  return changedKeys.every((key) => {
+    if (key === "version") return true;
+    if (dependencySections.includes(key)) {
+      return internalCellFenceDependencyVersionOnly(leftRecord[key], rightRecord[key]);
+    }
+    return false;
+  });
+}
+
+function isPackageManifestPath(filePath) {
+  return filePath === "package.json" || /^packages\/[^/]+\/package\.json$/.test(filePath);
+}
+
+export function releaseMetadataOnlyPackageJsonPathsForDiff(baseRef, headRef = "HEAD", filePaths = [], rootDir = repositoryRoot) {
+  const paths = new Set();
+  for (const filePath of filePaths.map((entry) => normalizeRepositoryPath(entry, rootDir))) {
+    if (!isPackageManifestPath(filePath)) continue;
+    const baseManifest = readJsonDocument(baseRef, filePath, rootDir);
+    const headManifest = readJsonDocument(headRef, filePath, rootDir);
+    if (releaseMetadataOnlyPackageRecordChange(baseManifest, headManifest)) paths.add(filePath);
+  }
+  return paths;
+}
+
 function workspaceLockDir(lockPath) {
   const match = /^(packages\/[^/]+)(?:$|\/node_modules\/)/.exec(lockPath);
   return match?.[1];
@@ -292,16 +390,34 @@ function changedLockPackagePaths(baseLock, headLock) {
   ));
 }
 
+function devOnlyLockPackageChange(leftEntry, rightEntry) {
+  const entries = [leftEntry, rightEntry].filter(Boolean);
+  return entries.length > 0 && entries.every((entry) => entry.dev === true || entry.devOptional === true);
+}
+
 export function packageLockWorkspaceDirsForDiff(baseRef, headRef = "HEAD", rootDir = repositoryRoot) {
   const baseLock = parsePackageLock(readGitFile(baseRef, "package-lock.json", rootDir));
   const headLock = parsePackageLock(readCurrentPackageLockText(headRef, rootDir));
   if (!baseLock || !headLock) return undefined;
 
   const workspaceDirs = new Set();
+  const basePackages = baseLock.packages ?? {};
+  const headPackages = headLock.packages ?? {};
   for (const packagePath of changedLockPackagePaths(baseLock, headLock)) {
+    const baseEntry = basePackages[packagePath];
+    const headEntry = headPackages[packagePath];
+    if (packagePath === "") {
+      if (releaseMetadataOnlyPackageRecordChange(baseEntry, headEntry)) continue;
+      return undefined;
+    }
     const workspaceDir = workspaceLockDir(packagePath);
-    if (!workspaceDir) return undefined;
-    workspaceDirs.add(workspaceDir);
+    if (workspaceDir) {
+      if (releaseMetadataOnlyPackageRecordChange(baseEntry, headEntry)) continue;
+      workspaceDirs.add(workspaceDir);
+      continue;
+    }
+    if (devOnlyLockPackageChange(baseEntry, headEntry)) continue;
+    return undefined;
   }
   return [...workspaceDirs].sort();
 }
@@ -319,18 +435,27 @@ export function mutationChangedPlan(options, rootDir = repositoryRoot) {
   const changedFiles = options.files.length > 0
     ? [...new Set(options.files.map((filePath) => normalizeRepositoryPath(filePath, rootDir)))].sort()
     : collectChangedFiles(baseRef, options.headRef, rootDir);
-  const packageLockWorkspaceDirs = !explicitSelection && changedFiles.includes("package-lock.json")
+  const releaseMetadataOnlyPackageJsonPaths = explicitSelection
+    ? new Set()
+    : releaseMetadataOnlyPackageJsonPathsForDiff(baseRef, options.headRef, changedFiles, rootDir);
+  const selectionFiles = releaseMetadataOnlyPackageJsonPaths.size === 0
+    ? changedFiles
+    : changedFiles.filter((filePath) => !releaseMetadataOnlyPackageJsonPaths.has(filePath));
+  const packageLockWorkspaceDirs = !explicitSelection && selectionFiles.includes("package-lock.json")
     ? packageLockWorkspaceDirsForDiff(baseRef, options.headRef, rootDir)
     : undefined;
   const scopes = explicitScopes.length > 0
     ? MUTATION_SCOPES.filter((scope) => explicitScopes.some((selected) => selected.id === scope.id))
-    : mutationScopesForFiles(changedFiles, MUTATION_SCOPES, { packageLockWorkspaceDirs });
+    : mutationScopesForFiles(selectionFiles, MUTATION_SCOPES, { packageLockWorkspaceDirs });
   return {
     baseRef,
     headRef: options.headRef,
     baseSha: gitRevision(baseRef, rootDir),
     headSha: gitRevision(options.headRef, rootDir),
     changedFiles,
+    ...(releaseMetadataOnlyPackageJsonPaths.size > 0
+      ? { releaseMetadataOnlyPackageJsonPaths: [...releaseMetadataOnlyPackageJsonPaths].sort() }
+      : {}),
     ...(Array.isArray(packageLockWorkspaceDirs) ? { packageLockWorkspaceDirs } : {}),
     scopes,
   };

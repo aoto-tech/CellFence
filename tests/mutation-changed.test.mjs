@@ -24,6 +24,8 @@ import {
   mutationScopesRequiringFreshRun,
   packageLockWorkspaceDirsForDiff,
   parseMutationChangedArgs,
+  prioritizeMutationScopes,
+  releaseMetadataOnlyPackageJsonPathsForDiff,
   resolveMutationBaseRef,
   summarizeMutationJsonReport,
 } from "../scripts/mutation-changed.mjs";
@@ -165,6 +167,28 @@ test("changed mutation config keeps full thresholds and isolates tests and cache
   const heavyScope = MUTATION_SCOPES.find((candidate) => candidate.id === "engine-module-resolution");
   const heavyParallelConfig = createChangedMutationConfig(baseMutationConfig, heavyScope, { outerJobs: 3 });
   assert.equal(heavyParallelConfig.concurrency, 2);
+});
+
+test("changed mutation scheduler starts long-running scopes first", () => {
+  assert.deepEqual(
+    prioritizeMutationScopes(MUTATION_SCOPES).slice(0, 4).map((scope) => scope.id),
+    [
+      "engine-module-resolution",
+      "engine-resource-access",
+      "engine-file-index",
+      "engine-glob-overlap",
+    ],
+  );
+  const subset = [
+    MUTATION_SCOPES.find((scope) => scope.id === "plugin-api"),
+    MUTATION_SCOPES.find((scope) => scope.id === "engine-resource-access"),
+    MUTATION_SCOPES.find((scope) => scope.id === "schema"),
+  ];
+  assert.deepEqual(
+    prioritizeMutationScopes(subset).map((scope) => scope.id),
+    ["engine-resource-access", "plugin-api", "schema"],
+    "ties keep their selected order",
+  );
 });
 
 test("official plugin mutation scopes run only matching plugin tests", () => {
@@ -477,6 +501,98 @@ test("package-lock-only changes narrow to safely attributed workspaces", (contex
       "engine-resource-access",
     ],
   );
+});
+
+test("release package metadata changes do not force every mutation scope", (context) => {
+  const rootDir = createGitRepository();
+  context.after(() => fs.rmSync(rootDir, { recursive: true, force: true }));
+  const writeJson = (filePath, value) => {
+    fs.mkdirSync(path.dirname(path.join(rootDir, filePath)), { recursive: true });
+    fs.writeFileSync(path.join(rootDir, filePath), `${JSON.stringify(value, null, 2)}\n`);
+  };
+  const writePackageLock = (packages) => writeJson("package-lock.json", {
+    name: "cellfence-workspace",
+    version: packages[""].version,
+    lockfileVersion: 3,
+    packages,
+  });
+
+  writeJson("package.json", { name: "cellfence-workspace", version: "0.3.0", workspaces: ["packages/*"] });
+  writeJson("packages/engine/package.json", {
+    name: "@cellfence/engine",
+    version: "0.3.0",
+    dependencies: { "@cellfence/schema": "0.3.0", typescript: "^5.5.4" },
+  });
+  writeJson("packages/plugin-agent-budget/package.json", {
+    name: "@cellfence/plugin-agent-budget",
+    version: "0.3.0",
+    dependencies: { "@cellfence/plugin-api": "0.3.0" },
+  });
+  fs.mkdirSync(path.join(rootDir, "packages/plugin-agent-budget/src"), { recursive: true });
+  fs.writeFileSync(path.join(rootDir, "packages/plugin-agent-budget/src/index.ts"), "export const VERSION = '0.3.0';\n");
+  writePackageLock({
+    "": { name: "cellfence-workspace", version: "0.3.0", workspaces: ["packages/*"] },
+    "packages/engine": {
+      name: "@cellfence/engine",
+      version: "0.3.0",
+      dependencies: { "@cellfence/schema": "0.3.0", typescript: "^5.5.4" },
+    },
+    "packages/plugin-agent-budget": {
+      name: "@cellfence/plugin-agent-budget",
+      version: "0.3.0",
+      dependencies: { "@cellfence/plugin-api": "0.3.0" },
+    },
+    "node_modules/shared-dev-tool": { version: "1.0.0", dev: true },
+  });
+  git(rootDir, ["add", "."]);
+  git(rootDir, ["commit", "-qm", "release metadata base"]);
+  const base = git(rootDir, ["rev-parse", "HEAD"]).trim();
+
+  writeJson("package.json", { name: "cellfence-workspace", version: "0.4.0", workspaces: ["packages/*"] });
+  writeJson("packages/engine/package.json", {
+    name: "@cellfence/engine",
+    version: "0.4.0",
+    dependencies: { "@cellfence/schema": "0.4.0", typescript: "^5.5.4" },
+  });
+  writeJson("packages/plugin-agent-budget/package.json", {
+    name: "@cellfence/plugin-agent-budget",
+    version: "0.4.0",
+    dependencies: { "@cellfence/plugin-api": "0.4.0" },
+  });
+  fs.writeFileSync(path.join(rootDir, "packages/plugin-agent-budget/src/index.ts"), "export const VERSION = '0.4.0';\n");
+  writePackageLock({
+    "": { name: "cellfence-workspace", version: "0.4.0", workspaces: ["packages/*"] },
+    "packages/engine": {
+      name: "@cellfence/engine",
+      version: "0.4.0",
+      dependencies: { "@cellfence/schema": "0.4.0", typescript: "^5.5.4" },
+    },
+    "packages/plugin-agent-budget": {
+      name: "@cellfence/plugin-agent-budget",
+      version: "0.4.0",
+      dependencies: { "@cellfence/plugin-api": "0.4.0" },
+    },
+    "node_modules/shared-dev-tool": { version: "1.0.1", dev: true },
+  });
+
+  assert.deepEqual(packageLockWorkspaceDirsForDiff(base, "HEAD", rootDir), []);
+  assert.deepEqual([...releaseMetadataOnlyPackageJsonPathsForDiff(base, "HEAD", [
+    "package.json",
+    "packages/engine/package.json",
+    "packages/plugin-agent-budget/package.json",
+  ], rootDir)], [
+    "package.json",
+    "packages/engine/package.json",
+    "packages/plugin-agent-budget/package.json",
+  ]);
+  const plan = mutationChangedPlan(parseMutationChangedArgs(["--base", base]), rootDir);
+  assert.deepEqual(plan.scopes.map((scope) => scope.id), ["plugin-agent-budget"]);
+  assert.deepEqual(plan.packageLockWorkspaceDirs, []);
+  assert.deepEqual(plan.releaseMetadataOnlyPackageJsonPaths, [
+    "package.json",
+    "packages/engine/package.json",
+    "packages/plugin-agent-budget/package.json",
+  ]);
 });
 
 test("package-lock changes fall back to every scope when attribution is shared", (context) => {
