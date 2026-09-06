@@ -15,7 +15,7 @@ import {
   patternCoveredByOwnedPaths,
   repoPath,
 } from "./file-index.js";
-import { pathPatternsOverlap } from "./glob-overlap.js";
+import { ownedPathPatternsOverlap, pathPatternsOverlap } from "./glob-overlap.js";
 import { stableCanonicalJson } from "./governance/canonicalization.js";
 import { readJsonFile } from "./json-file.js";
 import {
@@ -553,14 +553,14 @@ function claimConflictSurfaces(left: CellFenceClaim, right: CellFenceClaim, cont
   const rightOwnedPathPrefixes = ownedPathPrefixesFor(context, right.cells);
   for (const leftPath of left.paths) {
     for (const rightOwned of rightOwnedPathPrefixes) {
-      if (pathPatternsOverlap(leftPath, rightOwned.pattern)) {
+      if (ownedPathPatternsOverlap(leftPath, rightOwned.pattern)) {
         surfaces.push(`path:${leftPath}<->cell:${rightOwned.cellId}`);
       }
     }
   }
   for (const rightPath of right.paths) {
     for (const leftOwned of leftOwnedPathPrefixes) {
-      if (pathPatternsOverlap(rightPath, leftOwned.pattern)) {
+      if (ownedPathPatternsOverlap(rightPath, leftOwned.pattern)) {
         surfaces.push(`path:${rightPath}<->cell:${leftOwned.cellId}`);
       }
     }

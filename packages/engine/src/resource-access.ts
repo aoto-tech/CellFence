@@ -8,7 +8,6 @@ import {
   normalizePath,
   listFiles,
   parseSourceFile,
-  readSourceText,
   repoPath,
   type FileIndexContext,
 } from "./file-index.js";
@@ -216,6 +215,11 @@ function textLooksSql(text: string): boolean {
   return /\b(select|insert|update|delete|from|join|into)\b/i.test(text);
 }
 
+function boundedStringValues(values: string[]): string[] | undefined {
+  const unique = [...new Set(values)];
+  return unique.length <= 16 ? unique : undefined;
+}
+
 // Stryker disable all: fixed-point aliases, branches, concatenation, cycles, and invalid expressions are covered by direct mutation-corpus assertions.
 function collectStaticStringConstants(sourceFile: ts.SourceFile): Map<string, string[]> {
   const candidateInitializers = new Map<string, ts.Expression>();
@@ -244,7 +248,7 @@ function collectStaticStringConstants(sourceFile: ts.SourceFile): Map<string, st
       const whenTrue = valuesFor(unwrapped.whenTrue, seen);
       const whenFalse = valuesFor(unwrapped.whenFalse, seen);
       if (!whenTrue || !whenFalse) return undefined;
-      return [...new Set([...whenTrue, ...whenFalse])].slice(0, 16);
+      return boundedStringValues([...whenTrue, ...whenFalse]);
     }
     if (ts.isBinaryExpression(unwrapped) && unwrapped.operatorToken.kind === ts.SyntaxKind.PlusToken) {
       const left = valuesFor(unwrapped.left, seen);
@@ -254,7 +258,7 @@ function collectStaticStringConstants(sourceFile: ts.SourceFile): Map<string, st
       for (const leftValue of left) {
         for (const rightValue of right) combined.push(`${leftValue}${rightValue}`);
       }
-      return [...new Set(combined)].slice(0, 16);
+      return boundedStringValues(combined);
     }
     return undefined;
   }
@@ -343,7 +347,7 @@ function collectLocalStaticStringResolution(
       const whenTrue = expressionValues(unwrapped.whenTrue, seen);
       const whenFalse = expressionValues(unwrapped.whenFalse, seen);
       if (!whenTrue || !whenFalse) return undefined;
-      return [...new Set([...whenTrue, ...whenFalse])].slice(0, 16);
+      return boundedStringValues([...whenTrue, ...whenFalse]);
     }
     if (ts.isBinaryExpression(unwrapped) && unwrapped.operatorToken.kind === ts.SyntaxKind.PlusToken) {
       const left = expressionValues(unwrapped.left, seen);
@@ -353,7 +357,7 @@ function collectLocalStaticStringResolution(
       for (const leftValue of left) {
         for (const rightValue of right) combined.push(`${leftValue}${rightValue}`);
       }
-      return [...new Set(combined)].slice(0, 16);
+      return boundedStringValues(combined);
     }
     return undefined;
   }
@@ -1196,8 +1200,18 @@ function httpSelectorValues(sourceFile: ts.SourceFile, usageNode: ts.Node, expre
   if (!expression) return [];
   const unwrapped = unwrapExpression(expression);
   if (ts.isNewExpression(unwrapped) && expressionName(unwrapped.expression) === "URL") {
-    // Stryker disable next-line OptionalChaining: TypeScript NewExpression exposes an arguments array; empty arrays index to undefined either way.
-    return httpSelectorValues(sourceFile, usageNode, unwrapped.arguments?.[0], constants);
+    const [input, base] = unwrapped.arguments || [];
+    const inputs = httpSelectorValues(sourceFile, usageNode, input, constants);
+    const bases = base ? httpSelectorValues(sourceFile, usageNode, base, constants) : [undefined];
+    const selectors: string[] = [];
+    try {
+      for (const inputValue of inputs) {
+        for (const baseValue of bases) selectors.push(new URL(inputValue, baseValue).href);
+      }
+    } catch {
+      return [];
+    }
+    return boundedStringValues(selectors) || [];
   }
   return staticStringResolutionAt(sourceFile, usageNode, unwrapped, constants).values.filter((value) => value.trim().length > 0);
 }
@@ -1233,14 +1247,9 @@ function collectPythonResourceAccesses(context: ResourceAccessAnalysisContext, f
 }
 
 export function collectResourceAccesses(context: ResourceAccessAnalysisContext, filePath: string): ResourceAccessReference[] {
-  const sourceText = readSourceText(context, filePath);
   if (isPythonPath(filePath)) {
-    // Stryker disable next-line ConditionalExpression: this is a process-spawn prefilter; the no-hint Python test proves that inspecting the same source still returns no observations.
-    if (!PYTHON_RESOURCE_SCAN_HINT.test(sourceText)) return [];
     return collectPythonResourceAccesses(context, filePath);
   }
-  // Stryker disable next-line ConditionalExpression: the hint is a performance prefilter; scanning a no-hint file still produces no resource accesses.
-  if (!RESOURCE_SCAN_HINT.test(sourceText)) return [];
   const sourceFile = parseSourceFile(context, filePath);
   const relativeFilePath = repoPath(context.rootDir, filePath);
   const accesses: ResourceAccessReference[] = [];
@@ -1690,7 +1699,7 @@ export function collectResourceAccesses(context: ResourceAccessAnalysisContext, 
               ...resourceAccessSource(name),
             });
           }
-        } else if (["get", "post", "put", "patch", "delete"].includes(name) && firstArgumentText.startsWith("/") && routeReceiverLooksHttp(node.expression)) {
+        } else if (["get", "post", "put", "patch", "delete", "options", "head", "all"].includes(name) && firstArgumentText.startsWith("/") && routeReceiverLooksHttp(node.expression)) {
           if (httpEnabled) {
             addResourceAccess(accesses, {
               kind: "http",

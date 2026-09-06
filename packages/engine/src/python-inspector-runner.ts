@@ -73,6 +73,28 @@ let memoizedPythonCommand: PythonCommand | undefined;
 let memoizedPythonFailure: Error | undefined;
 let memoizedRuntimeIdentity: string | undefined;
 let inspectorProcessCount = 0;
+let memoizedStdlibModules: ReadonlySet<string> | undefined;
+
+export function pythonStdlibModuleNames(): ReadonlySet<string> {
+  if (memoizedStdlibModules) return memoizedStdlibModules;
+  // Use the inspector's interpreter in isolated mode; never import repository code.
+  pythonInspectorRuntimeIdentity();
+  if (!memoizedPythonCommand) return new Set();
+  const selected = memoizedPythonCommand;
+  try {
+    const output = execCommandSync(selected.command, [
+      ...selected.args, "-I", "-B", "-c",
+      "import json, sys; print(json.dumps(sorted(getattr(sys, 'stdlib_module_names', sys.builtin_module_names))))",
+    ], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], timeout: 5_000 });
+    const names: unknown = JSON.parse(output);
+    if (!Array.isArray(names) || !names.every((name) => typeof name === "string")) return new Set();
+    memoizedStdlibModules = new Set<string>(names);
+    return memoizedStdlibModules;
+  } catch {
+    // Unknown dependencies stay subject to policy when runtime metadata is unavailable.
+    return new Set();
+  }
+}
 
 function writeBatchRunner(): string {
   if (batchRunnerPath) return batchRunnerPath;

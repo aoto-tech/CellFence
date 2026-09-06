@@ -31,6 +31,8 @@ import {
   syntaxPublicSurfaceSignatureParts,
 } from "../packages/engine/dist/module-resolution.js";
 import { inspectPythonSource } from "../packages/engine/dist/python-analysis.js";
+import { checkRepository, createBaseline } from "../packages/engine/dist/index.js";
+import { bugFixture } from "./bug-fixtures.mjs";
 
 function writeJson(filePath, value) {
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
@@ -1282,7 +1284,10 @@ test("module resolution reports dynamic require compatibility forms exactly", ()
       "computed Reflect.apply(require)() cannot be resolved statically at line 9",
       "computed require.call() cannot be resolved statically at line 10",
       "computed require.apply() cannot be resolved statically at line 11",
+      "computed escaped require() cannot be resolved statically at line 12",
+      "computed escaped require() cannot be resolved statically at line 13",
       "computed require.apply() cannot be resolved statically at line 16",
+      "computed escaped require() cannot be resolved statically at line 17",
     ]);
   } finally {
     fs.rmSync(rootDir, { recursive: true, force: true });
@@ -2452,7 +2457,8 @@ test("shadowed globals and var-scoped constants do not escape their lexical sema
     ].join("\n"));
     const warnings = [];
     assert.deepEqual(extractImports(context(rootDir), filePath, warnings).map((reference) => reference.specifier), ["./var-scoped.js"]);
-    assert.deepEqual(warnings, []);
+    // A shadowed Reflect is not a known forwarding operation; the builtin loader escapes.
+    assert.deepEqual(warnings.map((warning) => warning.details.line), [4]);
   } finally {
     fs.rmSync(rootDir, { recursive: true, force: true });
   }
@@ -3520,4 +3526,89 @@ test("module resolution declaration surface hash follows alias and package self 
   } finally {
     fs.rmSync(rootDir, { recursive: true, force: true });
   }
+});
+
+test("bug #48 internal declarations preserve adjacent public signatures", (testContext) => {
+  const { rootDir, write, manifest } = bugFixture(testContext);
+  manifest.cells[0].publicSymbols = ["api", "stable"];
+  write("cellfence.manifest.json", manifest);
+  const source = (type, hidden = "true") => `export function api(value: ${type}): ${type} { return value; }\n/** @internal */\nexport const hidden = ${hidden};\nexport const stable = 1;\n`;
+  const filePath = write("src/producer/public.ts", source("string"));
+  const before = publicSurfaceHash(filePath);
+  write("cellfence.baseline.json", createBaseline({ rootDir }));
+  write("src/producer/public.ts", source("string", "'changed'"));
+  assert.equal(publicSurfaceHash(filePath), before);
+  write("src/producer/public.ts", source("number"));
+  assert.notEqual(publicSurfaceHash(filePath), before);
+  const checked = checkRepository({ rootDir, baselinePath: "cellfence.baseline.json" });
+  assert.equal(checked.ok, false);
+  assert(checked.findings.some((finding) => finding.ruleId === "CELLFENCE_RATCHET_PUBLIC_SURFACE_SIGNATURE_CHANGE"));
+  for (const separator of ["\n", " "]) {
+    write("src/producer/public.ts", `/** @internal */ export const hidden = 1;${separator}export const api = 1;${separator}/** @internal */ export const hidden2 = 2;${separator}export const stable = 1;`);
+    const first = publicSurfaceHash(filePath);
+    write("src/producer/public.ts", fs.readFileSync(filePath, "utf8").replace("api = 1", "api = 'changed'"));
+    assert.notEqual(publicSurfaceHash(filePath), first);
+  }
+});
+
+test("bug #49 createRequire origins agree with Node and unknown origins fail closed", (testContext) => {
+  const { rootDir, write } = bugFixture(testContext);
+  write("src/producer/private.cjs", "module.exports = 42;");
+  write("src/consumer/private.cjs", "module.exports = 0;");
+  const origin = path.join(rootDir, "src/producer/public.ts");
+  const bases = [JSON.stringify(origin), JSON.stringify(pathToFileURL(origin).href), "new URL('../producer/public.ts', import.meta.url)"];
+  for (const base of bases) {
+    const filePath = write("src/consumer/load.mjs", `import { createRequire } from 'node:module'; const loader = createRequire(${base}); const alias = loader; console.log(alias('./private.cjs'));`);
+    const runtime = spawnSync(process.execPath, [filePath], { encoding: "utf8" });
+    assert.equal(runtime.status, 0, runtime.stderr);
+    assert.equal(runtime.stdout.trim(), "42");
+    const checked = checkRepository({ rootDir });
+    assert.equal(checked.ok, false);
+    assert(checked.findings.some((finding) => finding.ruleId === "CELLFENCE_PRIVATE_IMPORT" && finding.details.targetPath === "src/producer/private.cjs"));
+  }
+  for (const base of ["process.env.ORIGIN", "'relative/path.js'", "'https://example.invalid/a.js'", "new URL('./a.js', process.env.ORIGIN)", "'file://['"]) {
+    write("src/consumer/load.mjs", `import { createRequire } from 'node:module'; const loader = createRequire(${base}); loader('./private.cjs');`);
+    const checked = checkRepository({ rootDir });
+    assert.equal(checked.ok, false, base);
+    assert(checked.findings.some((finding) => finding.ruleId === "CELLFENCE_UNSUPPORTED_DYNAMIC_REQUIRE"), base);
+  }
+  for (const invocation of ["loader.call(null, './private.cjs')", "loader.apply(null, ['./private.cjs'])", "Reflect.apply(loader, null, ['./private.cjs'])"]) {
+    const filePath = write("src/consumer/load.mjs", `import { createRequire } from 'node:module'; const loader = createRequire(${bases[2]}); ${invocation};`);
+    const warnings = [];
+    const references = extractImports(context(rootDir), filePath, warnings);
+    assert(references.some((reference) => reference.resolutionBasePath === "src/producer/public.ts"));
+  }
+});
+
+test("bug #55 assigned or escaped require aliases are explicit unresolved analysis", (testContext) => {
+  const { rootDir, write } = bugFixture(testContext);
+  write("src/producer/private.cjs", "module.exports = 42;");
+  const filePath = write("src/consumer/load.cjs", "let load; load = require; console.log(load('../producer/private.cjs'));");
+  const runtime = spawnSync(process.execPath, [filePath], { encoding: "utf8" });
+  assert.equal(runtime.status, 0, runtime.stderr);
+  assert.equal(runtime.stdout.trim(), "42");
+  for (const source of ["let load; load = require; load('../producer/private.cjs');", "let load; if (flag) load = require; load('../producer/private.cjs');", "consume(require);", "const load = require; consume(load);"]) {
+    write("src/consumer/load.cjs", source);
+    const checked = checkRepository({ rootDir });
+    assert.equal(checked.ok, false, source);
+    assert(checked.findings.some((finding) => finding.ruleId === "CELLFENCE_UNSUPPORTED_DYNAMIC_REQUIRE"));
+  }
+  write("src/consumer/load.cjs", "function harmless(require) { let load; load = require; consume(load); }\n");
+  assert.equal(checkRepository({ rootDir }).ok, true);
+});
+
+test("bug #54 Python package precedence agrees with importlib", (testContext) => {
+  const { rootDir, write } = bugFixture(testContext);
+  write("src/producer/service.py", "value = 0\n");
+  write("src/producer/service/__init__.py", "value = 42\n");
+  const filePath = write("src/consumer/load.py", "import producer.service\nprint(producer.service.__file__)\n");
+  const runtime = spawnSync("python3", ["-I", "-c", "import sys; sys.path.insert(0, sys.argv[1]); import producer.service; print(producer.service.__file__)", path.join(rootDir, "src")], { encoding: "utf8" });
+  assert.equal(runtime.status, 0, runtime.stderr);
+  assert.equal(resolvePythonImport(rootDir, "src/consumer/load.py", "producer.service", ["src"]), path.relative(rootDir, runtime.stdout.trim()));
+  fs.unlinkSync(path.join(rootDir, "src/producer/service/__init__.py"));
+  assert.equal(resolvePythonImport(rootDir, "src/consumer/load.py", "producer.service", ["src"]), "src/producer/service.py");
+  write("other/producer/service/__init__.py", "value = 99\n");
+  assert.equal(resolvePythonImport(rootDir, "src/consumer/load.py", "producer.service", ["other", "src"]), "other/producer/service/__init__.py");
+  assert.equal(resolvePythonImport(rootDir, "src/consumer/load.py", "producer.service", ["src", "other"]), "src/producer/service.py");
+  assert.equal(fs.existsSync(filePath), true);
 });

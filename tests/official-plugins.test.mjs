@@ -982,7 +982,7 @@ test("official plugin path matchers agree with the minimatch dialect oracle", ()
     });
     assert.equal(
       blastRule.run(directContext(blastRepository)).length > 0,
-      expected,
+      expected || (!pattern.includes("*") && minimatch(relativePath, `${pattern}/**`, { dot: true })),
       `blast-radius pattern=${pattern} path=${relativePath}`,
     );
   }
@@ -2740,4 +2740,20 @@ test("economy matrix plugin exposes the reporter through plugin metadata", () =>
   assert.equal(plugin.name, "@cellfence/reporter-economy-matrix");
   assert.equal(plugin.reporters.length, 1);
   assert.equal(plugin.reporters[0].name, "@cellfence/reporter-economy-matrix");
+});
+
+test("blast radius bug #57 bare ownership includes descendants and deleted paths", () => {
+  const rule = directRule(blastRadiusPlugin({ maxAffectedCells: 0 }), "blast-radius/affected-cells");
+  for (const pattern of ["src/core", "src/core/", "src/core/**"]) {
+    const repository = baseRepository({
+      manifest: { schemaVersion: "cellfence.manifest.v1", cells: [{ id: "core", ownedPaths: [pattern], publicEntry: "src/core/public.ts", publicSymbols: [] }] },
+      changedFiles: new Set(["src/core/deleted.ts"]),
+      files: { ...baseRepository().files, byCell: {} },
+      imports: [{ importerCellId: "app", targetCellId: "core" }],
+    });
+    assert.deepEqual(rule.run(directContext(repository))[0].details.changedCells, ["core"]);
+    assert.deepEqual(rule.run(directContext(repository))[0].details.affectedCells, ["app"]);
+    repository.changedFiles = new Set(["src/core-extra/file.ts"]);
+    assert.deepEqual(rule.run(directContext(repository)), []);
+  }
 });

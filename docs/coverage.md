@@ -38,13 +38,15 @@ Coverage observations are grouped into three buckets:
 
 Ordinary rule findings that do not represent analysis visibility, such as a plugin warning or an intentional policy violation, do not reduce the coverage ratio.
 
+The file inventory uses the same ownership, governance exclusions, and generated-directory rules as `check`. Excluded files do not count as analyzed or contribute to the denominator. `totalFiles` includes the in-scope source inventory and unresolved inputs outside that inventory; `analyzedFiles` contains in-scope files without unresolved observations. Diagnostics preserve the owning cell and source line when available.
+
 ## How To Improve Coverage
 
 Typical remediation paths are:
 
 - rewrite computed imports or resource names into static, reviewable forms;
 - add explicit `resourceContracts` for intentional high-value couplings;
-- let the baseline grandfather known existing resources, then review only new deltas;
+- declare approved resource access, create a passing baseline, then review new deltas (see [ratchets](ratchets.md));
 - pass runtime evidence through `--evidence` for resources that are only visible while tests or services run;
 - enable built-in adapters that match the stack, or write a programmatic adapter with `@cellfence/plugin-api`;
 - use a short-lived signed waiver only when the blind spot is reviewed and temporary.

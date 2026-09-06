@@ -15,7 +15,7 @@ import {
   type ResourceContractManifest,
   type RuleSeverityMap,
 } from "@cellfence/schema";
-import { listFiles, matchesPattern, normalizePath, patternCoveredByOwnedPaths, repoPath, SOURCE_EXTENSIONS } from "./file-index.js";
+import { listFiles, matchesPattern, normalizePath, pathOwnedByCell, patternCoveredByOwnedPaths, repoPath, SOURCE_EXTENSIONS } from "./file-index.js";
 import { PRODUCTION_SCOPE_EXCLUDES, type InferManifestScope } from "./manifest-inference.js";
 import { extractPublicSymbols, publicSurfaceHash } from "./module-resolution.js";
 import { ownedPathPatternsOverlap } from "./glob-overlap.js";
@@ -638,7 +638,7 @@ function owningCellsForFiles(manifest: CellFenceManifest, files: string[]): stri
   const cells = new Set<string>();
   for (const filePath of files) {
     for (const cell of manifest.cells) {
-      if (cell.ownedPaths.some((pattern) => matchesPattern(filePath, pattern))) cells.add(cell.id);
+      if (pathOwnedByCell(cell, filePath)) cells.add(cell.id);
     }
   }
   return [...cells].sort((left, right) => left.localeCompare(right));
@@ -687,7 +687,7 @@ export function checkCommitEvidence(options: { rootDir?: string; manifest: CellF
       }
     }
     const declaredCells = csv(trailers["Changed-Cells"]);
-    if (declaredCells.length > 0 && JSON.stringify(declaredCells) !== JSON.stringify(changedCells)) {
+    if (JSON.stringify(declaredCells) !== JSON.stringify(changedCells)) {
       findings.push({ ruleId: "CELLFENCE_COMMIT_CHANGED_CELLS_MISMATCH", severity: "error", message: `${commit.slice(0, 12)} Changed-Cells does not match git diff`, details: { commit, declaredCells, changedCells } });
     }
     const addedTests = files.filter((entry) => entry.status.startsWith("A") && /(^|\/)(tests?|__tests__)\//.test(entry.path)).map((entry) => entry.path).sort();

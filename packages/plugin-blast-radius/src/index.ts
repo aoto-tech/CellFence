@@ -18,7 +18,8 @@ function changedCells(repository: CellFenceRepositoryModel): Set<string> {
   const cells = new Set<string>();
   for (const filePath of repository.changedFiles) {
     for (const cell of repository.manifest.cells) {
-      if (cell.ownedPaths.some((pattern) => matchesPattern(filePath, pattern))) {
+      if (cell.ownedPaths.some((pattern) => matchesPattern(filePath, pattern)
+        || (!pattern.includes("*") && matchesPattern(filePath, `${pattern.replace(/\/$/, "")}/**`)))) {
         cells.add(cell.id);
       }
     }

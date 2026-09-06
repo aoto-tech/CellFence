@@ -67,12 +67,12 @@ The private key belongs to an approval-controlled workflow or external signing s
 
 If a cell has `"locked": true`, `baseline check` requires either `CELLFENCE_BASELINE_ED25519_PUBLIC_KEY` or `CELLFENCE_BASELINE_HMAC_KEY` so a hand-edited baseline cannot silently redefine the accepted contract for that locked cell. `baseline update` also fails with `CELLFENCE_LOCKED_BASELINE_EXPANSION` whenever the update would increase or shift ownership scope, add public symbols, change the public entry, change public signatures, add dependency edges, add artifact contracts, increase legacy count metrics, or grandfather new resource access or external dependency use for that cell. A human owner must either reduce the change or explicitly review and sign the contract expansion.
 
-For large repositories, prefer this baseline-first workflow over hand-writing every resource contract:
+For large repositories, establish a passing resource policy before creating a baseline:
 
 1. declare cells, public entries, and ownership in the manifest;
-2. run `cellfence baseline create` to snapshot existing static file, database, queue, HTTP resource access, and observed external dependency use;
-3. optionally pass runtime evidence with `--evidence resource-evidence.json`;
-4. run `cellfence baseline check` in CI;
-5. review only new resource access deltas.
+2. run `cellfence check` to identify existing file, database, queue, and HTTP resource access, and declare the approved access in `resourceContracts`; configure `externalDependencies` when dependency policy requires it;
+3. resolve the reported policy violations and unresolved analysis; optionally pass runtime evidence with `--evidence resource-evidence.json`;
+4. run `cellfence baseline create` to snapshot the passing repository, using the same manifest and evidence;
+5. run `cellfence baseline check` in CI and review new contract deltas.
 
-`resourceContracts` and `externalDependencies` remain useful for intentional high-value contracts, but the baseline prevents a manifest maintenance treadmill where every historical table, topic, endpoint, or third-party dependency must be manually listed before adoption.
+`baseline create` runs the normal checks and refuses repositories with unapproved resource access. It does not automatically authorize existing access or replace required manifest contracts. The baseline records an accepted state and then prevents silent expansion beyond it.

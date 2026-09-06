@@ -6,6 +6,7 @@ import type { CellFenceBaseline, CellManifest } from "@cellfence/schema";
 import { addFinding } from "./findings.js";
 import type { AnalysisContext, Finding, ResolvedImport } from "./types.js";
 import type { ImportReference } from "./module-resolution.js";
+import { pythonStdlibModuleNames } from "./python-inspector-runner.js";
 
 type ExternalDependencyId = string;
 
@@ -14,67 +15,6 @@ const NODE_BUILTINS = new Set<string>([
   ...builtinModules.map((specifier) => specifier.replace(/^node:/, "")),
 ]);
 
-const PYTHON_STDLIB_ROOTS = new Set([
-  "__future__",
-  "abc",
-  "argparse",
-  "asyncio",
-  "base64",
-  "bisect",
-  "bz2",
-  "calendar",
-  "collections",
-  "concurrent",
-  "copy",
-  "contextlib",
-  "csv",
-  "dataclasses",
-  "datetime",
-  "decimal",
-  "email",
-  "enum",
-  "fnmatch",
-  "functools",
-  "glob",
-  "gzip",
-  "hashlib",
-  "heapq",
-  "http",
-  "importlib",
-  "inspect",
-  "io",
-  "itertools",
-  "json",
-  "logging",
-  "math",
-  "multiprocessing",
-  "os",
-  "pathlib",
-  "pickle",
-  "platform",
-  "queue",
-  "random",
-  "re",
-  "shutil",
-  "signal",
-  "sqlite3",
-  "statistics",
-  "socket",
-  "ssl",
-  "string",
-  "subprocess",
-  "sys",
-  "tempfile",
-  "threading",
-  "time",
-  "traceback",
-  "typing",
-  "unittest",
-  "urllib",
-  "uuid",
-  "xml",
-  "zipfile",
-]);
 
 export type ExternalDependencyObservation = {
   cellId: string;
@@ -116,7 +56,7 @@ function pythonImportRoot(specifier: string): string | undefined {
 
 export function isPythonStdlibSpecifier(specifier: string): boolean {
   const root = pythonImportRoot(specifier);
-  return Boolean(root && PYTHON_STDLIB_ROOTS.has(root));
+  return Boolean(root && pythonStdlibModuleNames().has(root));
 }
 
 function npmDependencyId(specifier: string): ExternalDependencyId | undefined {

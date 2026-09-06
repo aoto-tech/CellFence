@@ -464,3 +464,100 @@ test("review CF-20, CF-21, CF-23 through CF-25: governance metadata and recovery
     fs.rmSync(pythonRoot, { recursive: true, force: true });
   }
 });
+
+import { bugFixture } from "./bug-fixtures.mjs";
+import { checkChangedRepository, createBaseline, createClaim, checkClaims, checkWriteAccess } from "../packages/engine/dist/index.js";
+import { walkCoverage } from "../packages/cli/dist/coverage-walker.js";
+
+test("bug #53 explicit headRef checks that snapshot and leaves caller dirt untouched", (testContext) => {
+  const { rootDir, write } = bugFixture(testContext);
+  initGit(rootDir);
+  git(rootDir, ["add", "."]); git(rootDir, ["commit", "-qm", "base"]);
+  const baseRef = git(rootDir, ["rev-parse", "HEAD"]);
+  write("src/consumer/work.ts", "import { secret } from '../producer/private'; console.log(secret);\n");
+  git(rootDir, ["add", "."]); git(rootDir, ["commit", "-qm", "private import"]);
+  const headRef = git(rootDir, ["rev-parse", "HEAD"]);
+  git(rootDir, ["checkout", "--detach", baseRef]);
+  write("README.md", "uncommitted user content\n");
+  const before = git(rootDir, ["status", "--porcelain"]);
+  const checked = checkChangedRepository({ rootDir, baseRef, headRef, manifestPath: path.join(rootDir, "cellfence.manifest.json") });
+  assert.equal(checked.ok, false);
+  assert(checked.findings.some((finding) => finding.ruleId === "CELLFENCE_PRIVATE_IMPORT"));
+  assert.equal(git(rootDir, ["rev-parse", "HEAD"]), baseRef);
+  assert.equal(git(rootDir, ["status", "--porcelain"]), before);
+  assert.equal(git(rootDir, ["worktree", "list", "--porcelain"]).split("worktree ").length, 2);
+  assert.equal(checkChangedRepository({ rootDir, baseRef, headRef: baseRef }).ok, true);
+});
+
+test("bug #56 cell reservations conflict with descendant globs for either ownership spelling", (testContext) => {
+  const { rootDir, write, manifest } = bugFixture(testContext);
+  manifest.cells[0].ownedPaths = ["src/producer/"];
+  write("cellfence.manifest.json", manifest);
+  assert.equal(createClaim({ rootDir, agent: "one", cells: ["producer"], ttl: "1h" }).ok, true);
+  const conflict = createClaim({ rootDir, agent: "two", paths: ["src/producer/*.ts"], ttl: "1h" });
+  assert.equal(conflict.ok, false);
+  assert(conflict.findings.some((finding) => finding.ruleId === "CELLFENCE_ACTIVE_CLAIM_CONFLICT"));
+  assert.equal(checkClaims({ rootDir }).ok, true);
+  assert.equal(checkWriteAccess({ rootDir, agent: "one", paths: ["src/producer/private.ts"] }).ok, true);
+  assert.equal(checkWriteAccess({ rootDir, agent: "two", paths: ["src/producer/private.ts"] }).ok, false);
+  assert.equal(createClaim({ rootDir, agent: "two", paths: ["src/producer-extra/*.ts"], ttl: "1h" }).ok, true);
+});
+
+test("bug #58 coverage uses governance exclusions and preserves unresolved location", (testContext) => {
+  const { rootDir, write, manifest } = bugFixture(testContext);
+  manifest.governance.exclude = ["src/consumer/hidden.ts"];
+  write("cellfence.manifest.json", manifest);
+  write("src/consumer/hidden.ts", "this is invalid {{{\n");
+  const clean = walkCoverage({ rootDir });
+  assert.equal(clean.check.ok, true);
+  assert.equal(clean.totalFiles, 4);
+  assert.equal(clean.analyzedFiles.length, 4);
+  assert(!clean.analyzedFiles.includes("src/consumer/hidden.ts"));
+  write("src/consumer/dynamic.ts", "// location\nrequire(candidate);\n");
+  const unresolved = walkCoverage({ rootDir });
+  assert.equal(unresolved.totalFiles, 5);
+  assert.equal(unresolved.analyzedFiles.length, 4);
+  assert(unresolved.unresolved.some((entry) => entry.line === 2 && entry.cellId === "consumer"));
+});
+
+test("bug #59 documented bootstrap requires approval before baseline creation", (testContext) => {
+  const { rootDir, write, manifest } = bugFixture(testContext);
+  write("src/consumer/resource.ts", "import fs from 'node:fs'; fs.readFileSync('data/a.txt');\n");
+  assert.throws(() => createBaseline({ rootDir }), /undeclared file resource data\/a.txt/);
+  manifest.cells[1].resourceContracts = [{ id: "data", kind: "file", access: ["read"], selectors: ["data/a.txt"] }];
+  write("cellfence.manifest.json", manifest);
+  write("cellfence.baseline.json", createBaseline({ rootDir }));
+  assert.equal(checkRepository({ rootDir, baselinePath: "cellfence.baseline.json" }).ok, true);
+});
+
+test("bug #60 Python runtime stdlib creates no dependency ratchet delta", (testContext) => {
+  const { rootDir, write } = bugFixture(testContext);
+  write("cellfence.baseline.json", createBaseline({ rootDir }));
+  write("src/consumer/imports.py", "import tomllib\nimport types\nimport hashlib\nimport xml.etree.ElementTree\n");
+  const checked = checkRepository({ rootDir, baselinePath: "cellfence.baseline.json" });
+  assert.equal(checked.ok, true, JSON.stringify(checked.findings));
+  assert.deepEqual(checked.metrics.consumer.externalDependencySet, []);
+  write("src/consumer/imports.py", "import third_party_example\n");
+  assert.equal(checkRepository({ rootDir, baselinePath: "cellfence.baseline.json" }).ok, false);
+  write("src/consumer/imports.py", "import types\n");
+  write("src/types/__init__.py", "value = 1\n");
+  assert(checkRepository({ rootDir }).findings.some((finding) => finding.ruleId === "CELLFENCE_UNOWNED_SOURCE"));
+});
+
+test("bug #61 empty Changed-Cells is checked against actual ownership", (testContext) => {
+  const { rootDir, write, manifest } = bugFixture(testContext);
+  manifest.cells[0].ownedPaths = ["src/producer"];
+  write("cellfence.manifest.json", manifest);
+  initGit(rootDir); git(rootDir, ["add", "."]); git(rootDir, ["commit", "-qm", "base"]);
+  const message = (declared) => `Update implementation\n\nProblem:\nA concrete behavior needs adjustment.\nChange:\nThe implementation changes the returned value.\nBehavior:\nThe returned number is forty three.\nTests:\nManual inspection checks this constant change.\nKnown-Gaps:\nNo further assumptions in this fixture.\n\nChange-Type: implementation\nChanged-Cells: ${declared}\nTests-Added: none\nTests-Modified: none\nTest-Impact: Existing behavior is checked by manual inspection.\nTests-Not-Added-Reason: This fixture modifies only a returned constant.\nAgent-Run-Id: regression-run\nAgent-Task-Id: regression-task\n`;
+  for (const declared of ["none", "n/a", "producer"]) {
+    write("src/producer/private.ts", `export const secret = ${JSON.stringify(declared)};\n`);
+    git(rootDir, ["add", "."]); git(rootDir, ["commit", "-qm", message(declared)]);
+    const checked = checkCommitEvidence({ rootDir, manifest, commit: "HEAD" });
+    assert.deepEqual(checked.commits[0].changedCells, ["producer"]);
+    assert.equal(checked.findings.some((finding) => finding.ruleId === "CELLFENCE_COMMIT_CHANGED_CELLS_MISMATCH"), declared !== "producer");
+  }
+  write("README.md", "Documentation only.\n");
+  git(rootDir, ["add", "."]); git(rootDir, ["commit", "-qm", message("none")]);
+  assert.equal(checkCommitEvidence({ rootDir, manifest, commit: "HEAD" }).ok, true);
+});

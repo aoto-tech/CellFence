@@ -88,35 +88,44 @@ function configurationInputWasExplicit(options: WalkOptions): boolean {
 export function walkCoverage(options: WalkOptions): WalkResult {
   const check = checkRepository(options);
   const unresolved: CoverageUnresolved[] = [];
-  for (const finding of [...check.findings, ...check.warnings]) {
-    const bucket = bucketForRule(finding.ruleId);
-    if (!bucket) continue;
-    if (bucket.configuration && !configurationInputWasExplicit(options)) continue;
-    recordUnresolved(unresolved, {
-      kind: bucket.kind,
-      cellId: undefined,
-      filePath: finding.filePath ? path.resolve(options.rootDir, finding.filePath) : options.rootDir,
-      line: undefined,
-      shape: bucket.configuration ? "configuration" : shapeForRule(finding.ruleId, finding.message),
-      reason: finding.message,
-    });
-  }
   const manifestPath = path.resolve(options.rootDir, options.manifestPath || "cellfence.manifest.json");
   const sourceInventory = new Set<string>();
+  const cellByPath = new Map<string, string>();
   try {
     const manifest = loadManifestFromFile(manifestPath);
+    const context = {
+      rootDir: options.rootDir,
+      manifest,
+      sourceFilesForCellCache: new Map(),
+      sourceTextCache: new Map(),
+      sourceFileCache: new Map(),
+    };
     for (const cell of manifest.cells) {
-      for (const filePath of sourceFilesForCell(options.rootDir, cell)) {
+      for (const filePath of sourceFilesForCell(options.rootDir, cell, context)) {
         sourceInventory.add(repoPath(options.rootDir, filePath));
+        cellByPath.set(repoPath(options.rootDir, filePath), cell.id);
       }
     }
-    for (const filePath of sourceFilesUnderGovernance(options.rootDir, manifest)) {
+    for (const filePath of sourceFilesUnderGovernance(options.rootDir, manifest, context)) {
       sourceInventory.add(repoPath(options.rootDir, filePath));
     }
   } catch {
     // The check result already carries the configuration error. Keep coverage
     // computation side-effect-free and let the caller surface the original
     // finding instead of masking it with an inventory failure.
+  }
+  for (const finding of [...check.findings, ...check.warnings]) {
+    const bucket = bucketForRule(finding.ruleId);
+    if (!bucket) continue;
+    if (bucket.configuration && !configurationInputWasExplicit(options)) continue;
+    recordUnresolved(unresolved, {
+      kind: bucket.kind,
+      cellId: finding.cellId ?? (finding.filePath ? cellByPath.get(repoPath(options.rootDir, path.resolve(options.rootDir, finding.filePath))) : undefined),
+      filePath: finding.filePath ? path.resolve(options.rootDir, finding.filePath) : options.rootDir,
+      line: typeof finding.details?.line === "number" ? finding.details.line : undefined,
+      shape: bucket.configuration ? "configuration" : shapeForRule(finding.ruleId, finding.message),
+      reason: finding.message,
+    });
   }
   const unresolvedFiles = new Set(unresolved.map((entry) => repoPath(options.rootDir, entry.filePath)));
   const externalUnresolvedCount = unresolved

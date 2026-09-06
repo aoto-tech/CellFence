@@ -908,6 +908,7 @@ function resolveWorkspacePackageImport(context: AnalysisContext, reference: Impo
 }
 
 function resolveImport(context: AnalysisContext, reference: ImportReference): ResolvedImport {
+  const resolutionBasePath = reference.resolutionBasePath ?? reference.importerPath;
   if (path.extname(reference.importerPath) === ".py") {
     const specifiers = [...(reference.candidateSpecifiers || []), reference.specifier];
     for (const specifier of specifiers) {
@@ -918,14 +919,14 @@ function resolveImport(context: AnalysisContext, reference: ImportReference): Re
   }
 
   if (importSpecifierLooksPathLike(reference.specifier)) {
-    const targetPath = resolveRelativeImport(context.rootDir, reference.importerPath, reference.specifier);
+    const targetPath = resolveRelativeImport(context.rootDir, resolutionBasePath, reference.specifier);
     if (!targetPath) return { isExternal: false, isPublicPackage: false };
     return resolvedRepositoryImport(context, targetPath);
   }
 
   const packageImportTargetPath = resolvePackageImportsTarget(
     context.rootDir,
-    reference.importerPath,
+    resolutionBasePath,
     reference.specifier,
     reference.typeOnly ? "types" : reference.kind === "require" ? "require" : "import",
   );
@@ -934,7 +935,7 @@ function resolveImport(context: AnalysisContext, reference: ImportReference): Re
   const packageImport = resolveWorkspacePackageImport(context, reference);
   if (packageImport) return packageImport;
 
-  const aliasTargetPath = resolveNearestPathAliasTarget(context.rootDir, reference.importerPath, reference.specifier)
+  const aliasTargetPath = resolveNearestPathAliasTarget(context.rootDir, resolutionBasePath, reference.specifier)
     || resolvePathAliasTarget(context, reference.specifier);
   if (aliasTargetPath) return resolvedRepositoryImport(context, aliasTargetPath, { matchedSpecifier: reference.specifier });
 
@@ -2160,7 +2161,28 @@ export function checkChangedRepository(options: ChangedCheckOptions = {}): Check
   try {
     gitCommand(rootDir, ["rev-parse", "--is-inside-work-tree"]);
     const baseCommit = assertGitCommit(rootDir, baseRef);
-    if (options.headRef) assertGitCommit(rootDir, options.headRef);
+    if (options.headRef) {
+      const headCommit = assertGitCommit(rootDir, options.headRef);
+      // An explicit ref selects a committed snapshot, regardless of checkout or dirt.
+      return withBaseWorktree(rootDir, headCommit, (headRootDir) => {
+        const snapshotPath = (input: string | undefined): string | undefined => {
+          if (!input || !path.isAbsolute(input)) return input;
+          const relative = path.relative(rootDir, input);
+          return relative !== ".." && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative)
+            ? path.resolve(headRootDir, relative)
+            : input;
+        };
+        return checkChangedRepository({
+          ...options,
+          rootDir: headRootDir,
+          baseRef: baseCommit,
+          headRef: undefined,
+          manifestPath: snapshotPath(options.manifestPath),
+          baselinePath: snapshotPath(options.baselinePath),
+          evidencePaths: options.evidencePaths?.map((input) => snapshotPath(input)!),
+        });
+      });
+    }
     const changedFiles = changedFilesForRefs(rootDir, baseRef, options.headRef);
     const movements = movementEntriesForRefs(rootDir, baseRef, options.headRef);
     const currentResult = checkRepository(checkOptionsForChangedCurrent(options, changedFiles));

@@ -348,6 +348,8 @@ The repository CI runs `npm run benchmark:scale` as a synthetic regression tripw
 
 Run the benchmark on your own hardware for real planning numbers. `check --changed --base origin/main` reports only newly introduced findings and reuses only clean deterministic base analysis keyed to the exact analyzer, schema, Python runtime, and policy inputs, while still analyzing the current tree in full. Base results containing findings are never cacheable because cached findings must not suppress current findings.
 
+Passing `--head <ref>` selects that committed snapshot for both the diff and analysis. CellFence uses a temporary detached worktree and leaves your checkout and uncommitted changes untouched. Omitting `--head` analyzes the current working tree, including uncommitted changes.
+
 ## CI
 
 Minimal GitHub Actions job:

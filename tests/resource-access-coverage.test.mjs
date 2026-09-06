@@ -2222,3 +2222,61 @@ test("resource access covers adapter-off branches and alternate framework shapes
     fs.rmSync(rootDir, { recursive: true, force: true });
   }
 });
+
+import { bugFixture } from "./bug-fixtures.mjs";
+
+test("bug #50 HTTP URL resolution preserves the authority and base", (testContext) => {
+  const { rootDir, write, manifest } = bugFixture(testContext);
+  manifest.cells[1].resourceContracts = [{ id: "http", kind: "http", access: ["call"], selectors: ["/health"] }];
+  write("cellfence.manifest.json", manifest);
+  const inputs = [
+    ["/health", "https://unapproved.example/base/"],
+    ["health", "https://unapproved.example/base/"],
+    ["//other.example/health", "https://unapproved.example/base/"],
+    ["https://other.example/health", "https://unapproved.example/base/"],
+    ["https://other.example/health", undefined],
+  ];
+  for (const [input, base] of inputs) {
+    write("src/consumer/http.ts", `fetch(new URL(${JSON.stringify(input)}${base ? `, ${JSON.stringify(base)}` : ""}));`);
+    const checked = checkRepository({ rootDir });
+    assert.equal(checked.ok, false);
+    assert(checked.findings.some((finding) => finding.ruleId === "CELLFENCE_UNDECLARED_RESOURCE_ACCESS" && finding.details.selector === new URL(input, base).href));
+  }
+  for (const expression of ["new URL('/health', unknownBase)", "new URL('/health')", "new URL('/health', 'broken')", "new URL()"] ) {
+    write("src/consumer/http.ts", `fetch(${expression});`);
+    assert(checkRepository({ rootDir }).findings.some((finding) => finding.ruleId === "CELLFENCE_UNRESOLVED_RESOURCE_ACCESS"));
+  }
+});
+
+test("bug #51 resource candidate limits fail closed without losing alternatives", (testContext) => {
+  const { rootDir, write, manifest } = bugFixture(testContext);
+  const urls = Array.from({ length: 17 }, (_, index) => `https://host${index}.example`);
+  const conditional = (values) => values.slice(0, -1).map((value, index) => `pick === ${index} ? ${JSON.stringify(value)} : `).join("") + JSON.stringify(values.at(-1));
+  manifest.cells[1].resourceContracts = [{ id: "http", kind: "http", access: ["call"], selectors: urls.slice(0, 16) }];
+  write("cellfence.manifest.json", manifest);
+  for (const local of [false, true]) {
+    for (const size of [16, 17]) {
+      write("src/consumer/http.ts", `${local ? "export function run(pick) {" : "declare const pick: number;"} const endpoint = ${conditional(urls.slice(0, size))}; fetch(endpoint);${local ? "}" : ""}`);
+      const checked = checkRepository({ rootDir });
+      assert.equal(checked.ok, size === 16, JSON.stringify(checked.findings));
+      if (size === 17) assert(checked.findings.some((finding) => finding.ruleId === "CELLFENCE_UNRESOLVED_RESOURCE_ACCESS"));
+    }
+    write("src/consumer/http.ts", `${local ? "function run(pick) {" : ""}const endpoint = ${conditional([...urls.slice(0, 16), urls[0]])}; fetch(endpoint);${local ? "}" : ""}`);
+    assert.equal(checkRepository({ rootDir }).ok, true);
+    write("src/consumer/http.ts", `${local ? "function run(pick) {" : ""}const prefix = ${conditional(urls.slice(0, 4))}; const suffix = ${conditional(["/a", "/b", "/c", "/d", "/e"])}; const endpoint = prefix + suffix; fetch(endpoint);${local ? "}" : ""}`);
+    assert(checkRepository({ rootDir }).findings.some((finding) => finding.ruleId === "CELLFENCE_UNRESOLVED_RESOURCE_ACCESS"));
+  }
+});
+
+test("bug #52 supported Fastify route methods do not depend on scan hints", (testContext) => {
+  const { rootDir, write } = bugFixture(testContext);
+  for (const method of ["get", "post", "put", "patch", "delete", "options", "head", "all"]) {
+    const source = `import Fastify from 'fastify'; const app = Fastify(); app.${method}('/private', async () => ({}));`;
+    for (const comment of ["", "// fetch\n", "/* ordinary comment */\n\n"]) {
+      write("src/consumer/routes.ts", comment + source);
+      const checked = checkRepository({ rootDir });
+      assert.equal(checked.ok, false, method);
+      assert(checked.findings.some((finding) => finding.ruleId === "CELLFENCE_UNDECLARED_RESOURCE_ACCESS" && finding.details.selector.endsWith(" /private")), method);
+    }
+  }
+});
