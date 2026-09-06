@@ -3604,7 +3604,7 @@ test("bug #54 Python package precedence agrees with importlib", (testContext) =>
   const filePath = write("src/consumer/load.py", "import producer.service\nprint(producer.service.__file__)\n");
   const runtime = spawnSync("python3", ["-I", "-c", "import sys; sys.path.insert(0, sys.argv[1]); import producer.service; print(producer.service.__file__)", path.join(rootDir, "src")], { encoding: "utf8" });
   assert.equal(runtime.status, 0, runtime.stderr);
-  assert.equal(resolvePythonImport(rootDir, "src/consumer/load.py", "producer.service", ["src"]), path.relative(rootDir, runtime.stdout.trim()));
+  assert.equal(resolvePythonImport(rootDir, "src/consumer/load.py", "producer.service", ["src"]), path.relative(rootDir, runtime.stdout.trim()).replace(/\\/g, "/"));
   fs.unlinkSync(path.join(rootDir, "src/producer/service/__init__.py"));
   assert.equal(resolvePythonImport(rootDir, "src/consumer/load.py", "producer.service", ["src"]), "src/producer/service.py");
   write("other/producer/service/__init__.py", "value = 99\n");

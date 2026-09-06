@@ -25,12 +25,15 @@ export type ImportKind = "import" | "export-from" | "require" | "dynamic-import"
 
 export type ImportReference = {
   importerPath: string;
-  resolutionBasePath?: string;
   specifier: string;
   candidateSpecifiers?: string[];
   kind: ImportKind;
   typeOnly: boolean;
   line: number;
+};
+
+type ImportReferenceWithResolutionBase = ImportReference & {
+  resolutionBasePath?: string;
 };
 
 export type ImportWarning = {
@@ -632,7 +635,7 @@ export function extractImports(
       details: { line: position.line + 1, offset: position.character + 1 },
     });
   }
-  const references: ImportReference[] = [];
+  const references: ImportReferenceWithResolutionBase[] = [];
   const importerPath = repoPath(context.rootDir, filePath);
   const rootScope = createRootImportScope();
   rootScope.bindings.set("require", "require");
@@ -1849,6 +1852,7 @@ function publicSurfaceSignatureParts(filePath: string): string[] {
   return declarationParts.some(declarationPartIsSubstantive) ? declarationParts : syntaxPublicSurfaceSignatureParts(filePath);
 }
 
+/** @internal */
 export function publicSurfaceHash(filePath: string): string {
   return crypto.createHash("sha256").update(publicSurfaceSignatureParts(filePath).join("\n")).digest("hex");
 }

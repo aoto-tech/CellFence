@@ -533,7 +533,7 @@ test("bug #59 documented bootstrap requires approval before baseline creation", 
 test("bug #60 Python runtime stdlib creates no dependency ratchet delta", (testContext) => {
   const { rootDir, write } = bugFixture(testContext);
   write("cellfence.baseline.json", createBaseline({ rootDir }));
-  write("src/consumer/imports.py", "import tomllib\nimport types\nimport hashlib\nimport xml.etree.ElementTree\n");
+  write("src/consumer/imports.py", "import json\nimport types\nimport hashlib\nimport xml.etree.ElementTree\n");
   const checked = checkRepository({ rootDir, baselinePath: "cellfence.baseline.json" });
   assert.equal(checked.ok, true, JSON.stringify(checked.findings));
   assert.deepEqual(checked.metrics.consumer.externalDependencySet, []);

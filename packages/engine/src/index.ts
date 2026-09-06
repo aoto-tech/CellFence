@@ -908,7 +908,8 @@ function resolveWorkspacePackageImport(context: AnalysisContext, reference: Impo
 }
 
 function resolveImport(context: AnalysisContext, reference: ImportReference): ResolvedImport {
-  const resolutionBasePath = reference.resolutionBasePath ?? reference.importerPath;
+  const referenceWithResolutionBase = reference as ImportReference & { resolutionBasePath?: string };
+  const resolutionBasePath = referenceWithResolutionBase.resolutionBasePath ?? reference.importerPath;
   if (path.extname(reference.importerPath) === ".py") {
     const specifiers = [...(reference.candidateSpecifiers || []), reference.specifier];
     for (const specifier of specifiers) {
