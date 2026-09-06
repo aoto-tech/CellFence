@@ -8,10 +8,13 @@ export type NormalizedObservedImportFact = {
   specifier: string;
   kind: "import" | "export-from" | "require" | "dynamic-import";
   typeOnly: boolean;
+  line: number;
   targetPath?: string;
   producerCellId?: string;
   isExternal: boolean;
   isPublicPackage: boolean;
+  packageExportState?: string;
+  packageExportReason?: string;
   declaredConsumer: boolean;
   privateImplementation: boolean;
 };

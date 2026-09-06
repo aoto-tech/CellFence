@@ -575,8 +575,11 @@ test("CLI MCP server exposes context, checks, claims, and finding explanations",
     assert.match(responses[3].result.content[0].text, /"ok": true/);
     assert.match(responses[4].result.content[0].text, /CELLFENCE_GIT_METADATA_UNAVAILABLE/);
     assert.match(responses[5].result.content[0].text, /"createdClaim"/);
-    assert.match(responses[6].result.content[0].text, /Use public entry/);
-    assert.match(responses[7].result.content[0].text, /"suggestedResolutions": \[\]/);
+    assert.doesNotMatch(responses[1].result.tools.find((tool) => tool.name === "explain_finding").description, /suggested resolutions/i);
+    assert.match(responses[6].result.content[0].text, /"ruleId": "CELLFENCE_PRIVATE_IMPORT"/);
+    assert.doesNotMatch(responses[6].result.content[0].text, /Use public entry|suggestedResolutions/);
+    assert.match(responses[7].result.content[0].text, /"ruleId": "CELLFENCE_PRIVATE_IMPORT"/);
+    assert.doesNotMatch(responses[7].result.content[0].text, /suggestedResolutions/);
     assert.equal(responses[8].result.isError, true);
     assert.match(responses[8].result.content[0].text, /create_claim requires agent and cellId/);
     assert.equal(responses[9].result.isError, true);
@@ -1483,20 +1486,30 @@ test("CLI rejects governed symlinks that target another cell private source", { 
   }
 });
 
-test("CLI check emits suggested resolutions for private imports", () => {
+test("CLI check emits diagnostic explanations for private imports", () => {
   const fixturePath = path.join(root, "fixtures/invalid/private-cross-cell-import");
   const result = runCli(["check", "--json"], fixturePath);
   assert.equal(result.status, 1);
   const checkResult = JSON.parse(result.stdout);
   const privateImportFinding = checkResult.findings.find((finding) => finding.ruleId === "CELLFENCE_PRIVATE_IMPORT");
   assert.ok(privateImportFinding);
-  assert.deepEqual(
-    privateImportFinding.suggestedResolutions.map((resolution) => resolution.kind),
-    ["change-code", "ask-human"],
-  );
-  assert.equal(privateImportFinding.suggestedResolutions[0].approvalRequired, false);
-  assert.equal(privateImportFinding.suggestedResolutions[1].approvalRequired, true);
-  assert.equal(privateImportFinding.suggestedResolutions[0].details.publicEntry, "src/producer/public.ts");
+  assert.equal(privateImportFinding.suggestedResolutions, undefined);
+  assert.equal(privateImportFinding.explanation.schemaVersion, "cellfence.finding-explanation.v1");
+  assert.equal(privateImportFinding.explanation.observedFacts[0].filePath, "src/consumer/public.ts");
+  assert.equal(privateImportFinding.explanation.observedFacts[0].value.targetPath, "src/producer/private.ts");
+  assert.equal(privateImportFinding.explanation.observedFacts[0].value.declaredConsumer, true);
+  assert.equal(privateImportFinding.explanation.observedFacts[0].value.privateImplementation, true);
+  assert.ok(privateImportFinding.explanation.appliedContracts.some((contract) =>
+    contract.jsonPointer === "/cells/0/publicEntry"
+    && contract.value === "src/producer/public.ts"
+  ));
+  assert.ok(privateImportFinding.explanation.appliedContracts.some((contract) =>
+    contract.jsonPointer === "/cells/1/consumes/0"
+    && contract.value.declarationFound === true
+  ));
+  assert.match(privateImportFinding.explanation.judgment, /imports private implementation/);
+  assert.ok(privateImportFinding.explanation.unverified.some((item) => /alternative API/.test(item)));
+  assert.doesNotMatch(JSON.stringify(privateImportFinding), /Use public entry|suggestedResolutions|change-code|ask-human/);
 });
 
 test("CLI check emits PR-ready markdown output", () => {
@@ -1563,8 +1576,8 @@ test("CLI baseline update refuses to expand locked cell baselines", () => {
   const parsedCheckResult = JSON.parse(checkResult.stdout);
   const ratchetFinding = parsedCheckResult.findings.find((finding) => finding.ruleId === "CELLFENCE_RATCHET_PUBLIC_SYMBOL_GROWTH");
   assert.ok(ratchetFinding);
-  const baselineSuggestion = ratchetFinding.suggestedResolutions.find((resolution) => resolution.kind === "update-baseline");
-  assert.equal(baselineSuggestion.approvalRequired, true);
+  assert.equal(ratchetFinding.suggestedResolutions, undefined);
+  assert.deepEqual(ratchetFinding.details, { metric: "publicSymbols", previous: 1, current: 2 });
 
   const createResult = runCli(["baseline", "create"], tempDir);
   assert.equal(createResult.status, 2);
@@ -1798,7 +1811,7 @@ test("CLI baseline update refuses unsealed locked baselines even when the next b
   }
 });
 
-test("CLI baseline verify suggests signing and verifier setup for locked baselines", () => {
+test("CLI baseline verify reports verifier inputs for locked baselines", () => {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "cellfence-baseline-locked-remediation-"));
   try {
     fs.mkdirSync(path.join(tempDir, "src/core"), { recursive: true });
@@ -1835,11 +1848,11 @@ test("CLI baseline verify suggests signing and verifier setup for locked baselin
     const sealFinding = parsed.findings.find((finding) => finding.ruleId === "CELLFENCE_BASELINE_SEAL_INVALID");
     assert.ok(sealFinding);
     assert.deepEqual(sealFinding.details.lockedCells, ["core"]);
-    assert.deepEqual(sealFinding.suggestedResolutions.map((resolution) => resolution.kind), ["ask-human", "ask-human"]);
-    assert.match(sealFinding.suggestedResolutions[0].title, /Configure baseline check/);
-    assert.match(sealFinding.suggestedResolutions[1].title, /Sign the accepted baseline/);
-    assert.equal(sealFinding.suggestedResolutions[0].details.ed25519PublicKeyEnv, "CELLFENCE_BASELINE_ED25519_PUBLIC_KEY");
-    assert.equal(sealFinding.suggestedResolutions[1].details.signCommand, "cellfence baseline sign --baseline cellfence.baseline.json");
+    assert.equal(sealFinding.suggestedResolutions, undefined);
+    assert.deepEqual(sealFinding.details.verifierEnv, [
+      "CELLFENCE_BASELINE_ED25519_PUBLIC_KEY",
+      "CELLFENCE_BASELINE_HMAC_KEY",
+    ]);
   } finally {
     fs.rmSync(tempDir, { recursive: true, force: true });
   }

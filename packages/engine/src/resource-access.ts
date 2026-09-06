@@ -543,10 +543,11 @@ export function addResourceAccess(accesses: ResourceAccessReference[], access: R
 }
 
 function normalizeSqlSelector(selector: string): string {
-  return selector
+  const normalizedSelector = selector
     .replace(/"/g, "")
-    .replace(/\s*\.\s*/g, ".")
-    .trim();
+    .replace(/\s*\.\s*/g, ".");
+  // Stryker disable next-line MethodExpression: SQL table captures already exclude boundary whitespace; trim remains defensive for non-regex callers.
+  return normalizedSelector.trim();
 }
 
 function sqlTableAccesses(text: string): Array<{ access: "read" | "write"; selector: string }> {

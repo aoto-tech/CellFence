@@ -99,7 +99,6 @@ export function walkCoverage(options: WalkOptions): WalkResult {
       line: undefined,
       shape: bucket.configuration ? "configuration" : shapeForRule(finding.ruleId, finding.message),
       reason: finding.message,
-      suggestion: undefined,
     });
   }
   const manifestPath = path.resolve(options.rootDir, options.manifestPath || "cellfence.manifest.json");

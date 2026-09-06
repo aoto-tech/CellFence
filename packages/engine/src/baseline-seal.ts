@@ -1,7 +1,6 @@
 import crypto from "node:crypto";
 
 import type { BaselineSeal, CellFenceBaseline, CellFenceManifest } from "@cellfence/schema";
-import { humanResolution } from "./findings.js";
 import { stableCanonicalJson } from "./governance/canonicalization.js";
 import type { Finding } from "./types.js";
 
@@ -135,24 +134,6 @@ function configuredSealVerifier(): "ed25519" | "hmac-sha256" | undefined {
   return undefined;
 }
 
-function verifierResolutionDetails(extra?: Record<string, unknown>): Record<string, unknown> {
-  return {
-    ed25519PublicKeyEnv: BASELINE_ED25519_PUBLIC_KEY_ENV,
-    ed25519PrivateKeyEnv: BASELINE_ED25519_PRIVATE_KEY_ENV,
-    hmacKeyEnv: BASELINE_HMAC_KEY_ENV,
-    signCommand: "cellfence baseline sign --baseline cellfence.baseline.json",
-    ...extra,
-  };
-}
-
-function configureVerifierResolutions(extra?: Record<string, unknown>): Finding["suggestedResolutions"] {
-  const details = verifierResolutionDetails(extra);
-  return [
-    humanResolution(`Configure baseline check with ${BASELINE_ED25519_PUBLIC_KEY_ENV} or ${BASELINE_HMAC_KEY_ENV}`, details),
-    humanResolution(`Sign the accepted baseline with ${BASELINE_ED25519_PRIVATE_KEY_ENV} or ${BASELINE_HMAC_KEY_ENV}`, details),
-  ];
-}
-
 export function validateBaselineSealFindings(
   manifest: CellFenceManifest,
   baseline: CellFenceBaseline,
@@ -170,8 +151,10 @@ export function validateBaselineSealFindings(
       severity: "error",
       filePath: baselinePath,
       message: `locked cells require ${BASELINE_ED25519_PUBLIC_KEY_ENV} or ${BASELINE_HMAC_KEY_ENV} during baseline check`,
-      details: { lockedCells: lockedCells.map((cell) => cell.id) },
-      suggestedResolutions: configureVerifierResolutions({ lockedCells: lockedCells.map((cell) => cell.id) }),
+      details: {
+        lockedCells: lockedCells.map((cell) => cell.id),
+        verifierEnv: [BASELINE_ED25519_PUBLIC_KEY_ENV, BASELINE_HMAC_KEY_ENV],
+      },
     });
     return findings;
   }
@@ -181,14 +164,12 @@ export function validateBaselineSealFindings(
         ruleId: "CELLFENCE_BASELINE_SEAL_INVALID",
         severity: "error",
         filePath: baselinePath,
-        message: `baseline has a seal but no verifier is configured; set ${BASELINE_ED25519_PUBLIC_KEY_ENV} or ${BASELINE_HMAC_KEY_ENV}`,
-        details: { algorithm: baseline.seal.algorithm, keyId: baseline.seal.keyId },
-        suggestedResolutions: [
-          humanResolution(`Configure baseline check with the verifier for ${baseline.seal.algorithm}`, verifierResolutionDetails({
-            algorithm: baseline.seal.algorithm,
-            keyId: baseline.seal.keyId,
-          })),
-        ],
+        message: "baseline has a seal but no verifier is configured",
+        details: {
+          algorithm: baseline.seal.algorithm,
+          keyId: baseline.seal.keyId,
+          verifierEnv: [BASELINE_ED25519_PUBLIC_KEY_ENV, BASELINE_HMAC_KEY_ENV],
+        },
       });
     } else if (requireConfiguredVerifier) {
       findings.push({
@@ -196,7 +177,7 @@ export function validateBaselineSealFindings(
         severity: "error",
         filePath: baselinePath,
         message: `baseline verification requires ${BASELINE_ED25519_PUBLIC_KEY_ENV} or ${BASELINE_HMAC_KEY_ENV}`,
-        suggestedResolutions: configureVerifierResolutions(),
+        details: { verifierEnv: [BASELINE_ED25519_PUBLIC_KEY_ENV, BASELINE_HMAC_KEY_ENV] },
       });
     }
     return findings;
@@ -206,10 +187,11 @@ export function validateBaselineSealFindings(
       ruleId: "CELLFENCE_BASELINE_SEAL_INVALID",
       severity: "error",
       filePath: baselinePath,
-      message: "baseline is not sealed; sign the baseline before enabling sealed baseline verification",
-      suggestedResolutions: [
-        humanResolution(`Sign the accepted baseline with ${BASELINE_ED25519_PRIVATE_KEY_ENV} or ${BASELINE_HMAC_KEY_ENV}`, verifierResolutionDetails()),
-      ],
+      message: "baseline is not sealed while sealed baseline verification is enabled",
+      details: {
+        expectedSealAlgorithms: ["ed25519", "hmac-sha256"],
+        signingEnv: [BASELINE_ED25519_PRIVATE_KEY_ENV, BASELINE_HMAC_KEY_ENV],
+      },
     });
     return findings;
   }

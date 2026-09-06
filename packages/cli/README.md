@@ -76,7 +76,7 @@ Exit codes: `0` no violations · `1` governance violations · `2` configuration 
 
 `context --format agents-md` emits a per-cell contract (owned paths, allowed imports, allowed resources, guidance) ready to pass into an agent's context. `install` writes a checksumed managed block into `AGENTS.md` or `CLAUDE.md`, and `install --check` fails when that block drifts or unmanaged CellFence instructions appear outside it. Waivers use `attestation:<id>` source directives plus signed external attestations; source `approved-by` text is never accepted as approval.
 
-MCP-capable agents can run `cellfence serve --mcp` and call `get_cell_context`, `check_change`, `create_claim`, and `explain_finding` over stdio. `check` and `baseline check` remain the deterministic completion signal.
+MCP-capable agents can run `cellfence serve --mcp` and call `get_cell_context`, `check_change`, `create_claim`, and `explain_finding` over stdio. `explain_finding` returns observed facts, applied contracts, judgments, and unverified items when structured explanation is present; it does not return remediation suggestions as CellFence-approved fixes. `check` and `baseline check` remain the deterministic completion signal.
 
 ## Learn more
 

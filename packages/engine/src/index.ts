@@ -69,17 +69,18 @@ import { createAcceptanceRecord } from "./governance/acceptance-record.js";
 import { createEvidenceGraph } from "./governance/evidence-graph.js";
 import { governanceEvidenceEnvelopeForCheck } from "./governance/evidence-envelope.js";
 import { evaluateGovernance } from "./governance/evaluator.js";
-import { evaluateImportPolicyFact } from "./governance/import-policy.js";
+import {
+  evaluateImportPolicyFact,
+  type ImportPolicyJudgment,
+  type NormalizedObservedImportFact,
+} from "./governance/import-policy.js";
 import { legacyDecisionFromEvaluation } from "./governance/legacy-adapter.js";
 import { validateChangedPathClasses, validatePathClassImports } from "./advanced-governance.js";
 import { CORE_REQUIRED_RULES, DEFAULT_MANIFEST_PATH } from "./constants.js";
 import { readJsonFile } from "./json-file.js";
 import {
   addFinding,
-  codeResolution,
   findingFingerprint,
-  humanResolution,
-  manifestResolution,
   withFindingFingerprint,
 } from "./findings.js";
 import { ownedPathPatternsOverlap } from "./glob-overlap.js";
@@ -158,6 +159,9 @@ import type {
   ContextOptions,
   CouplingGraph,
   Finding,
+  FindingExplanation,
+  FindingExplanationContract,
+  FindingExplanationObservation,
   PluginDefinition,
   PluginAdapterHelpers,
   PluginFinding,
@@ -251,6 +255,11 @@ export type {
   CouplingGraphEdgeKind,
   CouplingGraphNode,
   Finding,
+  FindingExplanation,
+  FindingExplanationContract,
+  FindingExplanationObservation,
+  FindingExplanationScalar,
+  FindingExplanationValue,
   PruneCandidate,
   PruneCandidateKind,
   PruneReport,
@@ -322,21 +331,7 @@ function warnWhenOwnershipCoverageDisabled(context: AnalysisContext, warnings: F
     message: "strict ownership coverage is disabled; source outside ownedPaths can escape CellFence checks",
     details: {
       governance: context.manifest.governance,
-      suggestedGovernance: {
-        requireOwnership: true,
-        include: ["src/**", "packages/**", "apps/**"],
-        exclude: ["tests/**", "fixtures/**"],
-      },
     },
-    suggestedResolutions: [
-      manifestResolution("Enable governance.requireOwnership and include the source roots CellFence must govern", true, {
-        governance: {
-          requireOwnership: true,
-          include: ["src/**", "packages/**", "apps/**"],
-          exclude: ["tests/**", "fixtures/**"],
-        },
-      }),
-    ],
   });
 }
 
@@ -350,12 +345,6 @@ function validateOwnershipCoverage(context: AnalysisContext, findings: Finding[]
         filePath: cell.publicEntry,
         message: `${cell.id} public entry is outside its ownedPaths: ${cell.publicEntry}`,
         details: { publicEntry: cell.publicEntry, ownedPaths: cell.ownedPaths },
-        suggestedResolutions: [
-          manifestResolution("Move publicEntry under an owned path or narrow the manifest to the real owner", Boolean(cell.locked), {
-            cell: cell.id,
-            publicEntry: cell.publicEntry,
-          }),
-        ],
       });
     }
 
@@ -368,12 +357,6 @@ function validateOwnershipCoverage(context: AnalysisContext, findings: Finding[]
         filePath: publicPath,
         message: `${cell.id} public path is outside its ownedPaths: ${publicPath}`,
         details: { publicPath, ownedPaths: cell.ownedPaths },
-        suggestedResolutions: [
-          manifestResolution("Move publicPaths under an owned path or narrow the manifest to the real owner", Boolean(cell.locked), {
-            cell: cell.id,
-            publicPath,
-          }),
-        ],
       });
     }
 
@@ -388,12 +371,6 @@ function validateOwnershipCoverage(context: AnalysisContext, findings: Finding[]
           filePath: artifactPath,
           message: `${cell.id} artifact lane ${artifactLane.id} is outside its ownedPaths: ${artifactPath}`,
           details: { artifactLaneId: artifactLane.id, artifactPath, ownedPaths: cell.ownedPaths },
-          suggestedResolutions: [
-            manifestResolution("Move the artifact lane under the producer ownedPaths or assign the artifact to the owning cell", Boolean(cell.locked), {
-              cell: cell.id,
-              artifactLane: artifactLane.id,
-            }),
-          ],
         });
       }
     }
@@ -408,11 +385,6 @@ function validateOwnershipCoverage(context: AnalysisContext, findings: Finding[]
       filePath: relativePath,
       message: `governed source file is not owned by any cell: ${relativePath}`,
       details: { path: relativePath, governance: context.manifest.governance },
-      suggestedResolutions: [
-        manifestResolution("Assign this source path to exactly one cell or exclude it from governance", true, {
-          path: relativePath,
-        }),
-      ],
     });
   }
 }
@@ -448,9 +420,6 @@ function validateSymlinkTargets(context: AnalysisContext, findings: Finding[]): 
         filePath: relativePath,
         message: `governed symlink cannot be resolved: ${relativePath}`,
         details: { path: relativePath, error: symlink.error },
-        suggestedResolutions: [
-          codeResolution("Replace the symlink with a regular file inside the owning cell or remove the broken link"),
-        ],
       });
       continue;
     }
@@ -461,9 +430,6 @@ function validateSymlinkTargets(context: AnalysisContext, findings: Finding[]): 
         filePath: relativePath,
         message: `governed symlink points outside the repository: ${relativePath}`,
         details: { path: relativePath },
-        suggestedResolutions: [
-          codeResolution("Replace the symlink with a checked-in source file or point it inside the owning cell"),
-        ],
       });
       continue;
     }
@@ -486,10 +452,6 @@ function validateSymlinkTargets(context: AnalysisContext, findings: Finding[]): 
           linkOwners: linkOwners.map((cell) => cell.id),
           targetOwners: targetOwners.map((cell) => cell.id),
         },
-        suggestedResolutions: [
-          codeResolution("Import the producer public entry instead of re-exporting another cell through a symlink"),
-          humanResolution("Ask a human owner to review whether this path should move to the target cell"),
-        ],
       });
     }
   }
@@ -573,21 +535,6 @@ function validateResourceAccesses(
             detectedBy: access.detectedBy,
             confidence: access.confidence,
           },
-          suggestedResolutions: [
-            codeResolution(`Remove or route this ${access.kind} access through an allowed owner`, {
-              kind: access.kind,
-              access: access.access,
-              selector: access.selector,
-            }),
-            manifestResolution(`Declare ${access.kind} ${access.access} access for ${access.selector}`, Boolean(cell.locked), {
-              cell: cell.id,
-              resourceContract: {
-                kind: access.kind,
-                access: [access.access],
-                selectors: [access.selector],
-              },
-            }),
-          ],
         });
       }
     }
@@ -783,21 +730,6 @@ function validatePluginResourceAccesses(
           detectedBy: access.detectedBy,
           confidence: access.confidence,
         },
-        suggestedResolutions: [
-          codeResolution(`Remove or route this ${access.kind} access through an allowed owner`, {
-            kind: access.kind,
-            access: access.access,
-            selector: access.selector,
-          }),
-          manifestResolution(`Declare ${access.kind} ${access.access} access for ${access.selector}`, Boolean(cell.locked), {
-            cell: cell.id,
-            resourceContract: {
-              kind: access.kind,
-              access: [access.access],
-              selectors: [access.selector],
-            },
-          }),
-        ],
       });
     }
   }
@@ -1030,12 +962,134 @@ function importTargetsPrivateImplementation(resolvedImport: ResolvedImport, prod
   return true;
 }
 
+function jsonPointerEscape(value: string): string {
+  return value.replace(/~/g, "~0").replace(/\//g, "~1");
+}
+
+function manifestCellPointer(context: AnalysisContext, cellId: string): string {
+  const cellIndex = context.manifest.cells.findIndex((cell) => cell.id === cellId);
+  return cellIndex >= 0 ? `/cells/${cellIndex}` : "/cells";
+}
+
+function manifestCellFieldPointer(context: AnalysisContext, cellId: string, field: string): string {
+  return `${manifestCellPointer(context, cellId)}/${jsonPointerEscape(field)}`;
+}
+
+function manifestConsumerPointer(context: AnalysisContext, importerCell: CellManifest, producerCellId: string): string {
+  const cellPointer = manifestCellPointer(context, importerCell.id);
+  const consumerIndex = (importerCell.consumes ?? []).findIndex((consumer) => consumer.cell === producerCellId);
+  return consumerIndex >= 0 ? `${cellPointer}/consumes/${consumerIndex}` : `${cellPointer}/consumes`;
+}
+
+function importPolicyObservedFacts(fact: NormalizedObservedImportFact): FindingExplanationObservation[] {
+  return [{
+    description: "Static import/reference observed by CellFence",
+    filePath: fact.importerPath,
+    line: fact.line,
+    value: {
+      importerPath: fact.importerPath,
+      importerCellId: fact.importerCellId,
+      specifier: fact.specifier,
+      kind: fact.kind,
+      typeOnly: fact.typeOnly,
+      targetPath: fact.targetPath,
+      producerCellId: fact.producerCellId,
+      isExternal: fact.isExternal,
+      isPublicPackage: fact.isPublicPackage,
+      declaredConsumer: fact.declaredConsumer,
+      privateImplementation: fact.privateImplementation,
+      packageExportState: fact.packageExportState,
+      packageExportReason: fact.packageExportReason,
+    },
+  }];
+}
+
+function importPolicyContractReferences(
+  context: AnalysisContext,
+  manifestFilePath: string,
+  importerCell: CellManifest,
+  producerCell: CellManifest,
+  includePublicSurface: boolean,
+): FindingExplanationContract[] {
+  const contracts: FindingExplanationContract[] = [{
+    source: "manifest",
+    filePath: manifestFilePath,
+    jsonPointer: manifestConsumerPointer(context, importerCell, producerCell.id),
+    description: `Consumer declarations checked for ${importerCell.id}`,
+    value: {
+      importerCellId: importerCell.id,
+      producerCellId: producerCell.id,
+      declaredConsumers: (importerCell.consumes ?? []).map((consumer) => consumer.cell),
+      declarationFound: Boolean(consumerDeclaration(importerCell, producerCell.id)),
+    },
+  }];
+
+  if (includePublicSurface) {
+    contracts.push({
+      source: "manifest",
+      filePath: manifestFilePath,
+      jsonPointer: manifestCellFieldPointer(context, producerCell.id, "publicEntry"),
+      description: `Declared public entry for ${producerCell.id}`,
+      value: producerCell.publicEntry,
+    });
+    contracts.push({
+      source: "manifest",
+      filePath: manifestFilePath,
+      jsonPointer: manifestCellFieldPointer(context, producerCell.id, "publicPaths"),
+      description: `Declared public path patterns for ${producerCell.id}`,
+      value: producerCell.publicPaths ?? [],
+    });
+    if (producerCell.packageName) {
+      contracts.push({
+        source: "manifest",
+        filePath: manifestFilePath,
+        jsonPointer: manifestCellFieldPointer(context, producerCell.id, "packageName"),
+        description: `Declared package name for ${producerCell.id}`,
+        value: producerCell.packageName,
+      });
+    }
+  }
+
+  return contracts;
+}
+
+const IMPORT_POLICY_UNVERIFIED = [
+  "CellFence did not verify whether an alternative API exists.",
+  "CellFence did not verify behavioral equivalence, authorization, transaction, side-effect, or exception semantics for any replacement.",
+  "CellFence did not decide whether the manifest, baseline, or ownership model should be changed.",
+];
+
+function importPolicyExplanation(
+  context: AnalysisContext,
+  manifestFilePath: string,
+  importerCell: CellManifest,
+  producerCell: CellManifest,
+  judgment: ImportPolicyJudgment,
+): FindingExplanation {
+  return {
+    schemaVersion: "cellfence.finding-explanation.v1",
+    observedFacts: importPolicyObservedFacts(judgment.fact),
+    appliedContracts: importPolicyContractReferences(
+      context,
+      manifestFilePath,
+      importerCell,
+      producerCell,
+      judgment.ruleId === "CELLFENCE_PRIVATE_IMPORT",
+    ),
+    judgment: judgment.message,
+    unverified: IMPORT_POLICY_UNVERIFIED,
+  };
+}
+
 function addPrivateImportFinding(
+  context: AnalysisContext,
   findings: Finding[],
+  manifestFilePath: string,
   importerCell: CellManifest,
   producerCell: CellManifest,
   reference: ImportReference,
   resolvedImport: ResolvedImport,
+  judgment: ImportPolicyJudgment,
 ): void {
   addFinding(findings, {
     ruleId: "CELLFENCE_PRIVATE_IMPORT",
@@ -1045,25 +1099,19 @@ function addPrivateImportFinding(
     filePath: reference.importerPath,
     message: `${importerCell.id} imports private implementation from ${producerCell.id}`,
     details: { specifier: resolvedSpecifier(reference, resolvedImport), targetPath: resolvedImport.targetPath, line: reference.line },
-    suggestedResolutions: [
-      codeResolution(`Import from ${producerCell.publicEntry} instead of ${resolvedImport.targetPath || reference.specifier}`, {
-        publicEntry: producerCell.publicEntry,
-        packageName: producerCell.packageName,
-      }),
-      humanResolution(`Ask ${producerCell.id}'s owner to expose the needed symbol through its public entry`, {
-        producerCell: producerCell.id,
-        publicEntry: producerCell.publicEntry,
-      }),
-    ],
+    explanation: importPolicyExplanation(context, manifestFilePath, importerCell, producerCell, judgment),
   });
 }
 
 function addUndeclaredConsumerFinding(
+  context: AnalysisContext,
   findings: Finding[],
+  manifestFilePath: string,
   importerCell: CellManifest,
   producerCell: CellManifest,
   reference: ImportReference,
   specifier: string,
+  judgment: ImportPolicyJudgment,
 ): void {
   addFinding(findings, {
     ruleId: "CELLFENCE_UNDECLARED_CONSUMER",
@@ -1073,15 +1121,7 @@ function addUndeclaredConsumerFinding(
     filePath: reference.importerPath,
     message: `${importerCell.id} imports ${producerCell.id} without declaring a consumer relationship`,
     details: { specifier, line: reference.line, kind: reference.kind, typeOnly: reference.typeOnly },
-    suggestedResolutions: [
-      codeResolution(`Remove the ${producerCell.id} import or move the code behind an existing allowed cell`, {
-        specifier,
-      }),
-      manifestResolution(`Declare ${importerCell.id} as a consumer of ${producerCell.id}`, Boolean(importerCell.locked), {
-        cell: importerCell.id,
-        consumes: { cell: producerCell.id },
-      }),
-    ],
+    explanation: importPolicyExplanation(context, manifestFilePath, importerCell, producerCell, judgment),
   });
 }
 
@@ -1114,17 +1154,6 @@ function validatePublicEntries(context: AnalysisContext, findings: Finding[], ob
         filePath: cell.publicEntry,
         message: `public symbols for cell ${cell.id} do not match manifest (${mismatchParts.join("; ")})`,
         details: { missingSymbols, undeclaredSymbols, line: 1 },
-        suggestedResolutions: [
-          codeResolution("Change the public entry exports to match the manifest", {
-            publicEntry: cell.publicEntry,
-            expectedSymbols: cell.publicSymbols,
-          }),
-          manifestResolution("Update publicSymbols in the manifest to match the public entry", Boolean(cell.locked), {
-            cell: cell.id,
-            missingSymbols,
-            undeclaredSymbols,
-          }),
-        ],
       });
     }
   }
@@ -1146,6 +1175,7 @@ function validateImports(
   context: AnalysisContext,
   findings: Finding[],
   warnings: Finding[],
+  manifestFilePath = DEFAULT_MANIFEST_PATH,
   observedImports: PluginImportReference[] = [],
   observedImportFiles = new Set<string>(),
   externalDependencyObservations: ExternalDependencyObservation[] = [],
@@ -1194,16 +1224,6 @@ function validateImports(
             filePath: reference.importerPath,
             message: `${importerCell.id} imports a file outside the repository root: ${specifier}`,
             details: { line: reference.line, specifier, targetPath: resolvedImport.targetPath },
-            suggestedResolutions: [
-              codeResolution("Move the imported source into the repository or stop importing it through a source boundary", {
-                specifier,
-                targetPath: resolvedImport.targetPath,
-              }),
-              manifestResolution("Model the dependency as an explicit package or checked-in cell source instead of a root-escaping path", Boolean(importerCell.locked), {
-                cell: importerCell.id,
-                specifier,
-              }),
-            ],
           });
           continue;
         }
@@ -1214,14 +1234,6 @@ function validateImports(
             filePath: reference.importerPath,
             message: `relative import ${reference.specifier} could not be resolved statically at line ${reference.line}`,
             details: { line: reference.line, specifier: reference.specifier },
-            suggestedResolutions: [
-              codeResolution("Fix the import specifier so CellFence can resolve the target file", {
-                specifier: reference.specifier,
-              }),
-              humanResolution("Ask for a resolver adapter if this import uses unsupported project-specific resolution", {
-                specifier: reference.specifier,
-              }),
-            ],
           });
         }
         if (
@@ -1236,15 +1248,6 @@ function validateImports(
             filePath: reference.importerPath,
             message: `${importerCell.id} imports governed but unowned source ${resolvedImport.targetPath}`,
             details: { specifier, targetPath: resolvedImport.targetPath, line: reference.line },
-            suggestedResolutions: [
-              codeResolution("Move the helper into an owned cell and import through that cell's public entry", {
-                specifier,
-                targetPath: resolvedImport.targetPath,
-              }),
-              manifestResolution("Assign the target path to exactly one cell if it is intentional source", true, {
-                targetPath: resolvedImport.targetPath,
-              }),
-            ],
           });
           continue;
         }
@@ -1262,10 +1265,13 @@ function validateImports(
           specifier,
           kind: reference.kind,
           typeOnly: reference.typeOnly,
+          line: reference.line,
           targetPath: observedImport.targetPath,
           producerCellId: producerCell.id,
           isExternal: resolvedImport.isExternal,
           isPublicPackage: resolvedImport.isPublicPackage,
+          packageExportState: resolvedImport.packageExportState,
+          packageExportReason: resolvedImport.packageExportReason,
           declaredConsumer: Boolean(declaration),
           privateImplementation,
         } satisfies Parameters<typeof evaluateImportPolicyFact>[0];
@@ -1273,7 +1279,7 @@ function validateImports(
         for (const judgment of importJudgments) {
           if (judgment.status !== "VIOLATED") continue;
           if (judgment.ruleId === "CELLFENCE_UNDECLARED_CONSUMER") {
-            addUndeclaredConsumerFinding(findings, importerCell, producerCell, reference, specifier);
+            addUndeclaredConsumerFinding(context, findings, manifestFilePath, importerCell, producerCell, reference, specifier, judgment);
           }
         }
 
@@ -1283,7 +1289,10 @@ function validateImports(
             && SOURCE_EXTENSIONS.includes(path.extname(resolvedImport.targetPath))
             && privateImplementation
           ) {
-            addPrivateImportFinding(findings, importerCell, producerCell, reference, resolvedImport);
+            const privateImportJudgment = importJudgments.find((judgment) => judgment.ruleId === "CELLFENCE_PRIVATE_IMPORT");
+            if (privateImportJudgment) {
+              addPrivateImportFinding(context, findings, manifestFilePath, importerCell, producerCell, reference, resolvedImport, privateImportJudgment);
+            }
           }
           const declaredArtifactLanes = new Set(declaration?.artifactLanes || []);
           if (!declaredArtifactLanes.has(resolvedImport.artifactLaneId)) {
@@ -1295,15 +1304,6 @@ function validateImports(
               filePath: reference.importerPath,
               message: `${importerCell.id} imports artifact lane ${resolvedImport.artifactLaneId} from ${producerCell.id} without declaring it`,
               details: { specifier, artifactLaneId: resolvedImport.artifactLaneId, line: reference.line },
-              suggestedResolutions: [
-                codeResolution("Stop importing the artifact lane directly if this is not an intended artifact dependency", {
-                  specifier,
-                }),
-                manifestResolution(`Declare artifact lane ${resolvedImport.artifactLaneId} on the consumer relationship`, Boolean(importerCell.locked), {
-                  cell: importerCell.id,
-                  consumes: { cell: producerCell.id, artifactLanes: [resolvedImport.artifactLaneId] },
-                }),
-              ],
             });
           }
           continue;
@@ -1311,7 +1311,7 @@ function validateImports(
 
         for (const judgment of importJudgments) {
           if (judgment.status === "VIOLATED" && judgment.ruleId === "CELLFENCE_PRIVATE_IMPORT") {
-            addPrivateImportFinding(findings, importerCell, producerCell, reference, resolvedImport);
+            addPrivateImportFinding(context, findings, manifestFilePath, importerCell, producerCell, reference, resolvedImport, judgment);
           }
         }
       }
@@ -1407,9 +1407,6 @@ function validateManifestPatternsMatchFiles(context: AnalysisContext, findings: 
       filePath,
       message: `${source} pattern ${pattern} contains a suspicious triple-star glob segment`,
       details: { source, pattern },
-      suggestedResolutions: [
-        manifestResolution("Use ** for recursive directory matches or * for one path segment", true, { source, pattern }),
-      ],
     });
   };
   const checkPattern = (pattern: string, source: string, cellId?: string, filePath?: string): void => {
@@ -1423,9 +1420,6 @@ function validateManifestPatternsMatchFiles(context: AnalysisContext, findings: 
       filePath,
       message: `${source} pattern ${pattern} does not match any repository file`,
       details: { source, pattern },
-      suggestedResolutions: [
-        manifestResolution("Remove the stale pattern or update it to match the intended files", true, { source, pattern }),
-      ],
     });
   };
   for (const pattern of context.manifest.governance?.include || []) checkPattern(pattern, "governance.include");
@@ -1466,15 +1460,15 @@ function applyRuleSeverityPolicy(
     const configuredSeverity = configuredRuleSeverity(context, finding, cliRuleSeverities);
     if (configuredSeverity === "off") {
       if (ruleIsRequired(context, finding.ruleId)) {
-        nextFindings.push({
+        nextFindings.push(withFindingFingerprint({
           ruleId: "CELLFENCE_REQUIRED_RULE_DISABLED",
           severity: "error",
           cellId: finding.cellId,
           filePath: finding.filePath,
           message: `required rule ${finding.ruleId} cannot be disabled`,
           details: { ruleId: finding.ruleId },
-        });
-        nextFindings.push(finding);
+        }));
+        nextFindings.push(withFindingFingerprint(finding));
       }
       continue;
     }
@@ -1556,7 +1550,15 @@ export function checkRepository(options: CheckOptions = {}): CheckResult {
   const observedImports: PluginImportReference[] = [];
   const observedImportFiles = new Set<string>();
   const externalDependencyObservations: ExternalDependencyObservation[] = [];
-  const crossCellDependencies = validateImports(context, findings, warnings, observedImports, observedImportFiles, externalDependencyObservations);
+  const crossCellDependencies = validateImports(
+    context,
+    findings,
+    warnings,
+    repoPath(rootDir, manifestPath),
+    observedImports,
+    observedImportFiles,
+    externalDependencyObservations,
+  );
   const externalDependenciesByCell = validateExternalDependencyPolicy({
     context,
     baseline,
@@ -1780,7 +1782,7 @@ export function createPruneReport(options: CheckOptions = {}): PruneReport {
   validateOwnershipCoverage(context, findings);
   validatePublicEntries(context, findings);
   validateRequiredRuleConfiguration(context, options.ruleSeverities, findings);
-  const crossCellDependencies = validateImports(context, findings, warnings, observedImports);
+  const crossCellDependencies = validateImports(context, findings, warnings, repoPath(rootDir, manifestPath), observedImports);
   const accessesByCell = validateResourceAccesses(context, findings, warnings, baseline);
   mergeAccessesByCell(
     accessesByCell,
@@ -2022,18 +2024,6 @@ function crossCellMovementFindings(manifest: CellFenceManifest, movements: Owner
         fromCell: fromCell.id,
         toCell: toCell.id,
       },
-      suggestedResolutions: [
-        humanResolution("Declare and review the cross-cell ownership transfer before merging", {
-          fromCell: fromCell.id,
-          toCell: toCell.id,
-          fromPath: movement.fromPath,
-          toPath: movement.toPath,
-        }),
-        manifestResolution("Update dependency, public-surface, and resource contracts for the ownership transfer", true, {
-          fromCell: fromCell.id,
-          toCell: toCell.id,
-        }),
-      ],
     });
   }
   return findings;
@@ -2300,12 +2290,45 @@ export function createCouplingGraph(options: CheckOptions = {}): CouplingGraph {
 export function createAutoAllocation(options: AutoAllocateOptions = {}): AutoAllocation {
   return createAutoAllocationOperation(options, graphOperationDependencies());
 }
+function explanationValueText(value: unknown): string {
+  if (value === undefined) return "";
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean" || value === null) return String(value);
+  return JSON.stringify(value);
+}
+
+function formatFindingExplanationLines(finding: Finding): string[] {
+  if (!finding.explanation) return [];
+  const lines: string[] = [];
+  if (finding.explanation.observedFacts.length > 0) {
+    lines.push("  Observed:");
+    for (const fact of finding.explanation.observedFacts) {
+      const location = fact.filePath ? ` (${fact.filePath}${fact.line ? `:${fact.line}` : ""})` : "";
+      const value = explanationValueText(fact.value);
+      lines.push(`    - ${fact.description}${location}${value ? `: ${value}` : ""}`);
+    }
+  }
+  if (finding.explanation.appliedContracts.length > 0) {
+    lines.push("  Contracts:");
+    for (const contract of finding.explanation.appliedContracts) {
+      const value = explanationValueText(contract.value);
+      lines.push(`    - ${contract.source} ${contract.filePath}${contract.jsonPointer}: ${contract.description}${value ? ` = ${value}` : ""}`);
+    }
+  }
+  lines.push(`  Judgment: ${finding.explanation.judgment}`);
+  if (finding.explanation.unverified.length > 0) {
+    lines.push("  Unverified:");
+    for (const item of finding.explanation.unverified) lines.push(`    - ${item}`);
+  }
+  return lines;
+}
+
 export function formatHumanResult(result: CheckResult): string {
   const lines: string[] = [];
   lines.push(result.ok ? "CellFence check passed." : "CellFence check failed.");
   for (const finding of [...result.findings, ...result.warnings]) {
     const location = finding.filePath ? ` ${finding.filePath}` : "";
     lines.push(`[${finding.severity}] ${finding.ruleId}${location}: ${finding.message}`);
+    lines.push(...formatFindingExplanationLines(finding));
   }
   return lines.join("\n");
 }

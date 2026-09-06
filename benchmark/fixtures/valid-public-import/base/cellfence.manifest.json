@@ -1,0 +1,29 @@
+{
+  "schemaVersion": "cellfence.manifest.v1",
+  "governance": {
+    "requireOwnership": true,
+    "include": ["src/**"]
+  },
+  "cells": [
+    {
+      "id": "parser",
+      "ownedPaths": ["src/parser/**"],
+      "publicEntry": "src/parser/public.js",
+      "publicSymbols": ["parseAmount"],
+      "consumes": [],
+      "producesArtifacts": []
+    },
+    {
+      "id": "reporting",
+      "ownedPaths": ["src/reporting/**"],
+      "publicEntry": "src/reporting/public.js",
+      "publicSymbols": ["renderReport"],
+      "consumes": [
+        {
+          "cell": "parser"
+        }
+      ],
+      "producesArtifacts": []
+    }
+  ]
+}

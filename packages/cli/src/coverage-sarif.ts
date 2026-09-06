@@ -66,14 +66,14 @@ export function coverageReportToSarif(report: CoverageReport): SarifLog {
     id: ruleIdForKind(kind),
     name: ruleIdForKind(kind),
     shortDescription: { text: `Unresolved ${kind} observation` },
-    fullDescription: { text: `CellFence could not resolve a ${kind} observation. See the JSON report for the reason and a suggested fix.` },
+    fullDescription: { text: `CellFence could not resolve a ${kind} observation. See the JSON report for the observed reason and scope.` },
     defaultConfiguration: { level: KIND_TO_LEVEL[kind] },
   }));
 
   const results: SarifResult[] = report.findings.map((entry) => ({
     ruleId: ruleIdForKind(entry.kind),
     level: KIND_TO_LEVEL[entry.kind],
-    message: { text: entry.suggestion ? `${entry.reason} (suggestion: ${entry.suggestion})` : entry.reason },
+    message: { text: entry.reason },
     locations: [
       {
         physicalLocation: {

@@ -100,6 +100,7 @@ CellFence check failed.
 ```
 
 Declaring a consumer authorizes the dependency, not the internals. The producer's `publicEntry` defines the source-level contract.
+Diagnostics explain the observed import and the manifest contract CellFence applied; they do not choose a replacement API or guarantee that any alternative implementation is functionally correct.
 
 ## What it catches
 

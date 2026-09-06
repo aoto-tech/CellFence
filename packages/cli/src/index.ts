@@ -1947,7 +1947,7 @@ function mcpToolDefinitions(): Record<string, unknown>[] {
     },
   }, {
     name: "explain_finding",
-    description: "Explain one CellFence finding and return its suggested resolutions.",
+    description: "Explain one CellFence finding from observed facts, applied contracts, judgment, and unverified items when available.",
     inputSchema: {
       type: "object",
       properties: {
@@ -2048,7 +2048,7 @@ function mcpToolCall(name: string, params: Record<string, unknown>, defaultRootD
     return mcpTextResult({
       ruleId: finding.ruleId,
       message: finding.message,
-      suggestedResolutions: finding.suggestedResolutions || [],
+      explanation: finding.explanation,
     });
   }
   throw new Error(`unknown CellFence MCP tool: ${name}`);

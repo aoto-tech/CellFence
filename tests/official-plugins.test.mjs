@@ -1007,16 +1007,6 @@ test("dependency sovereignty plugin emits exact approval findings", () => {
       owners: ["team-legacy"],
       approvedCells: [],
     },
-    suggestedResolutions: [{
-      kind: "ask-human",
-      title: "Request approval from legacy owners",
-      approvalRequired: true,
-      details: {
-        owners: ["team-legacy"],
-        producer: "legacy",
-        consumer: "app",
-      },
-    }],
   }]);
   const ownerRule = directRule(dependencySovereigntyPlugin({
     actor: "team-legacy",

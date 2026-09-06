@@ -30,10 +30,16 @@ export function findingFingerprint(finding: Finding): string {
     .digest("hex");
 }
 
+export function withoutSuggestedResolutions(finding: Finding): Finding {
+  const { suggestedResolutions: _deprecatedSuggestedResolutions, ...publicFinding } = finding;
+  return publicFinding;
+}
+
 export function withFindingFingerprint(finding: Finding): Finding {
+  const publicFinding = withoutSuggestedResolutions(finding);
   return {
-    ...finding,
-    fingerprint: finding.fingerprint || findingFingerprint(finding),
+    ...publicFinding,
+    fingerprint: publicFinding.fingerprint || findingFingerprint(publicFinding),
   };
 }
 

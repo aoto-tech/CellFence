@@ -3,7 +3,7 @@ import path from "node:path";
 
 import type { CellFenceBaseline, CellManifest } from "@cellfence/schema";
 
-import { addFinding, codeResolution, manifestResolution } from "./findings.js";
+import { addFinding } from "./findings.js";
 import type { AnalysisContext, Finding, ResolvedImport } from "./types.js";
 import type { ImportReference } from "./module-resolution.js";
 
@@ -183,7 +183,6 @@ function addExternalDependencyFinding(
     | "CELLFENCE_RATCHET_EXTERNAL_DEPENDENCY_ADDED"
     | "CELLFENCE_LOCKED_EXTERNAL_DEPENDENCY_EXPANSION",
   message: string,
-  locked: boolean,
 ): void {
   addFinding(findings, {
     ruleId,
@@ -198,20 +197,6 @@ function addExternalDependencyFinding(
       kind: observation.kind,
       typeOnly: observation.typeOnly,
     },
-    suggestedResolutions: [
-      codeResolution("Remove the external dependency use or route it through the owning cell", {
-        dependencyId: observation.dependencyId,
-        specifier: observation.specifier,
-      }),
-      manifestResolution("Declare an external dependency policy entry for this cell", locked, {
-        cell: observation.cellId,
-        externalDependencies: {
-          [ruleId === "CELLFENCE_EXTERNAL_DEPENDENCY_CLAIM_VIOLATION" ? "claim" : "allow"]: [
-            observation.dependencyId,
-          ],
-        },
-      }),
-    ],
   });
 }
 
@@ -235,7 +220,6 @@ export function validateExternalDependencyPolicy(
         observation,
         "CELLFENCE_EXTERNAL_DEPENDENCY_CLAIM_VIOLATION",
         `${observation.cellId} uses ${observation.dependencyId}, which is claimed by ${[...dependencyClaimers].sort().join(", ")}`,
-        Boolean(cell.locked),
       );
       continue;
     }
@@ -248,7 +232,6 @@ export function validateExternalDependencyPolicy(
         observation,
         "CELLFENCE_LOCKED_EXTERNAL_DEPENDENCY_EXPANSION",
         `${observation.cellId} is locked and added external dependency ${observation.dependencyId}`,
-        true,
       );
       continue;
     }
@@ -261,7 +244,6 @@ export function validateExternalDependencyPolicy(
         observation,
         "CELLFENCE_RATCHET_EXTERNAL_DEPENDENCY_ADDED",
         `${observation.cellId} added external dependency ${observation.dependencyId} outside the accepted baseline`,
-        Boolean(cell.locked),
       );
     }
   }

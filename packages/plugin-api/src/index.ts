@@ -30,6 +30,37 @@ export type CellFenceSuggestedResolution = {
   details?: Record<string, unknown>;
 };
 
+export type CellFenceFindingExplanationScalar = string | number | boolean | null;
+
+export type CellFenceFindingExplanationValue =
+  | CellFenceFindingExplanationScalar
+  | readonly CellFenceFindingExplanationScalar[]
+  | { readonly [key: string]: CellFenceFindingExplanationValue | undefined };
+
+export type CellFenceFindingExplanationObservation = {
+  description: string;
+  filePath?: string;
+  line?: number;
+  value?: CellFenceFindingExplanationValue;
+};
+
+export type CellFenceFindingExplanationContract = {
+  source: "manifest" | "baseline";
+  filePath: string;
+  jsonPointer: string;
+  description: string;
+  value?: CellFenceFindingExplanationValue;
+  verified?: boolean;
+};
+
+export type CellFenceFindingExplanation = {
+  schemaVersion: "cellfence.finding-explanation.v1";
+  observedFacts: CellFenceFindingExplanationObservation[];
+  appliedContracts: CellFenceFindingExplanationContract[];
+  judgment: string;
+  unverified: string[];
+};
+
 export type CellFenceFinding<RuleId extends string = string> = {
   ruleId: RuleId;
   severity: CellFenceFindingSeverity;
@@ -38,6 +69,12 @@ export type CellFenceFinding<RuleId extends string = string> = {
   cellId?: string;
   producerCellId?: string;
   details?: Record<string, unknown>;
+  explanation?: CellFenceFindingExplanation;
+  /**
+   * @deprecated Normal CellFence diagnostics no longer return remediation
+   * suggestions. The field remains so older plugins can compile, but CellFence
+   * strips it from emitted diagnostics.
+   */
   suggestedResolutions?: CellFenceSuggestedResolution[];
   fingerprint?: string;
 };

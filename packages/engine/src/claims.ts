@@ -7,7 +7,7 @@ import type { CellFenceManifest, CellManifest } from "@cellfence/schema";
 
 import { DEFAULT_CLAIMS_PATH, DEFAULT_MANIFEST_PATH } from "./constants.js";
 import { errorMessage } from "./errors.js";
-import { addFinding, humanResolution } from "./findings.js";
+import { addFinding } from "./findings.js";
 import {
   matchesPattern,
   normalizePath,
@@ -638,13 +638,6 @@ function addClaimConflictFinding(findings: Finding[], left: CellFenceClaim, righ
       right: { id: right.id, agent: right.agent, expiresAt: right.expiresAt },
       surfaces,
     },
-    suggestedResolutions: [
-      humanResolution("Wait for one claim to expire, narrow the claim surface, or assign a human owner to serialize the work", {
-        leftClaim: left.id,
-        rightClaim: right.id,
-        surfaces,
-      }),
-    ],
   });
 }
 
@@ -981,12 +974,6 @@ function validateAgentChangedFiles(
         filePath: changedFile,
         message: `${agent} changed ${changedFile}, but active claim ${conflictingClaim.id} belongs to ${conflictingClaim.agent}`,
         details: { agent, changedFile, conflictingClaim },
-        suggestedResolutions: [
-          humanResolution("Serialize the work or create a non-overlapping claim before editing this path", {
-            changedFile,
-            conflictingClaim: conflictingClaim.id,
-          }),
-        ],
       });
     } else if (!coveredByAgent) {
       addFinding(findings, {
@@ -995,12 +982,6 @@ function validateAgentChangedFiles(
         filePath: changedFile,
         message: `${agent} changed ${changedFile} without an active claim covering that path`,
         details: { agent, changedFile, activeClaimIds: agentClaims.map((claim) => claim.id) },
-        suggestedResolutions: [
-          humanResolution("Create or narrow an active CellFence claim before editing this path", {
-            changedFile,
-            agent,
-          }),
-        ],
       });
     }
   }

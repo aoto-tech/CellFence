@@ -9,7 +9,7 @@ import {
 } from "@cellfence/schema";
 
 import { DEFAULT_BASELINE_PATH, DEFAULT_MANIFEST_PATH } from "./constants.js";
-import { addFinding, codeResolution, humanResolution } from "./findings.js";
+import { addFinding } from "./findings.js";
 import { patternCoveredByOwnedPaths } from "./file-index.js";
 import { readJsonFile } from "./json-file.js";
 import {
@@ -111,10 +111,6 @@ function addLockedBaselineFinding(
     cellId,
     message,
     details,
-    suggestedResolutions: [
-      codeResolution("Reduce the change so the locked cell stays within the accepted baseline", details),
-      humanResolution("Ask a human owner to review and unlock or manually accept this architectural expansion", details),
-    ],
   });
 }
 

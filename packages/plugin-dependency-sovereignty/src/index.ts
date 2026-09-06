@@ -73,14 +73,6 @@ export function dependencySovereigntyPlugin(options: DependencySovereigntyOption
               producerCellId: producer,
               message: `${actor} added dependency ${edge}, but ${producer} requires owner approval`,
               details: { edge, actor, owners, approvedCells: [...approvedCells] },
-              suggestedResolutions: [
-                {
-                  kind: "ask-human",
-                  title: `Request approval from ${producer} owners`,
-                  approvalRequired: true,
-                  details: { owners, producer, consumer },
-                },
-              ],
             });
           }
           return findings;

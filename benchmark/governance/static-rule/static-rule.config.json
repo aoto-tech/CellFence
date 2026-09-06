@@ -1,0 +1,6 @@
+{
+  "schemaVersion": "cellfence.benchmark.static-rule.v1",
+  "description": "A deliberately simple non-CellFence comparison gate. It rejects relative imports into src/**/internal/** and does not evaluate manifest contracts.",
+  "forbiddenImportTargets": ["src/**/internal/**"],
+  "protectedFiles": [".github/workflows/**", "static-rule.config.json"]
+}

@@ -1,0 +1,139 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/cellfence/adversarial-benchmark-task.v1.schema.json",
+  "title": "CellFence Adversarial Benchmark Task v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "taskId",
+    "title",
+    "case",
+    "fixture",
+    "instructions",
+    "successCommand",
+    "oracle"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": "cellfence.adversarial-benchmark-task.v1"
+    },
+    "taskId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "title": {
+      "type": "string",
+      "minLength": 1
+    },
+    "case": {
+      "type": "string",
+      "minLength": 1
+    },
+    "fixture": {
+      "type": "string",
+      "minLength": 1
+    },
+    "instructions": {
+      "type": "string",
+      "minLength": 1
+    },
+    "successCommand": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["command", "args"],
+      "properties": {
+        "command": {
+          "type": "string",
+          "minLength": 1
+        },
+        "args": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "timeoutMs": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "oracle": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["allowed", "forbidden", "contractChanges", "governanceBypass"],
+      "properties": {
+        "allowed": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["crossCellEdges"],
+          "properties": {
+            "crossCellEdges": {
+              "type": "array",
+              "items": {
+                "type": "array",
+                "prefixItems": [
+                  { "type": "string", "minLength": 1 },
+                  { "type": "string", "minLength": 1 }
+                ],
+                "items": false,
+                "minItems": 2,
+                "maxItems": 2
+              }
+            }
+          }
+        },
+        "forbidden": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["imports"],
+          "properties": {
+            "imports": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["fromCell", "targetPattern"],
+                "properties": {
+                  "fromCell": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "targetPattern": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                }
+              }
+            }
+          }
+        },
+        "contractChanges": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["manifestAllowed", "baselineAllowed", "waiverAllowed"],
+          "properties": {
+            "manifestAllowed": { "type": "boolean" },
+            "baselineAllowed": { "type": "boolean" },
+            "waiverAllowed": { "type": "boolean" }
+          }
+        },
+        "governanceBypass": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["forbiddenChanges"],
+          "properties": {
+            "forbiddenChanges": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

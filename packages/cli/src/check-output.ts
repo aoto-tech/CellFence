@@ -89,6 +89,12 @@ function markdownTableCell(value: unknown): string {
     .trim();
 }
 
+function markdownExplanationLine(value: unknown): string {
+  if (value === undefined) return "";
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean" || value === null) return String(value);
+  return JSON.stringify(value);
+}
+
 function formatCheckResultMarkdown(result: CheckResult, metadata: CheckRunMetadata): string {
   const summary = checkSummary(result, metadata);
   const allFindings = [...result.findings, ...result.warnings];
@@ -121,6 +127,41 @@ function formatCheckResultMarkdown(result: CheckResult, metadata: CheckRunMetada
         finding.message,
       ].map(markdownTableCell).join(" | ").replace(/^/, "| ").replace(/$/, " |"));
     }
+    const explainedFindings = allFindings.filter((finding) => finding.explanation);
+    if (explainedFindings.length > 0) {
+      lines.push("");
+      lines.push("## Diagnostic Evidence");
+      for (const finding of explainedFindings) {
+        const explanation = finding.explanation;
+        if (!explanation) continue;
+        lines.push("");
+        lines.push(`### ${finding.ruleId} ${findingLocation(finding)}`);
+        if (explanation.observedFacts.length > 0) {
+          lines.push("");
+          lines.push("Observed:");
+          for (const fact of explanation.observedFacts) {
+            const location = fact.filePath ? ` (${fact.filePath}${fact.line ? `:${fact.line}` : ""})` : "";
+            const value = markdownExplanationLine(fact.value);
+            lines.push(`- ${fact.description}${location}${value ? `: ${value}` : ""}`);
+          }
+        }
+        if (explanation.appliedContracts.length > 0) {
+          lines.push("");
+          lines.push("Contracts:");
+          for (const contract of explanation.appliedContracts) {
+            const value = markdownExplanationLine(contract.value);
+            lines.push(`- ${contract.source} ${contract.filePath}${contract.jsonPointer}: ${contract.description}${value ? ` = ${value}` : ""}`);
+          }
+        }
+        lines.push("");
+        lines.push(`Judgment: ${explanation.judgment}`);
+        if (explanation.unverified.length > 0) {
+          lines.push("");
+          lines.push("Unverified:");
+          for (const item of explanation.unverified) lines.push(`- ${item}`);
+        }
+      }
+    }
   }
   return lines.join("\n");
 }
@@ -146,6 +187,7 @@ function formatCheckResultSarif(result: CheckResult, metadata: CheckRunMetadata)
         cellId: finding.cellId,
         producerCellId: finding.producerCellId,
         details: finding.details,
+        explanation: finding.explanation,
       },
     };
     if (finding.filePath) {

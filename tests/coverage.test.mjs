@@ -60,7 +60,8 @@ test("buildCoverageReport rolls up unresolved observations into a stable summary
     assert.equal(report.summary.unresolvedResources, 1);
     assert.equal(report.summary.unresolvedPublicSurface, 1);
     assert.equal(report.findings.length, 4);
-    assert.equal(report.findings[2].suggestion, "Add 'orders.sequelize.query' to resourceContracts");
+    assert.equal(report.findings[2].suggestion, undefined);
+    assert.doesNotMatch(JSON.stringify(report), /Add 'orders\.sequelize\.query' to resourceContracts/);
   } finally {
     fs.rmSync(rootDir, { recursive: true, force: true });
   }

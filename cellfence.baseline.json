@@ -1,6 +1,6 @@
 {
   "schemaVersion": "cellfence.baseline.v1",
-  "generatedAt": "2026-08-23T10:36:04.955Z",
+  "generatedAt": "2026-09-06T04:19:24.108Z",
   "cellIds": [
     "adapter-call-pattern",
     "adapter-opentelemetry",
@@ -79,8 +79,8 @@
     },
     "plugin-api": {
       "ownedPathPatterns": 1,
-      "publicSymbols": 23,
-      "publicSurfaceLines": 175,
+      "publicSymbols": 28,
+      "publicSurfaceLines": 212,
       "crossCellDependencies": 1,
       "ownedPathSet": [
         "packages/plugin-api/**"
@@ -94,6 +94,11 @@
         "CellFenceCapability",
         "CellFenceFileIndex",
         "CellFenceFinding",
+        "CellFenceFindingExplanation",
+        "CellFenceFindingExplanationContract",
+        "CellFenceFindingExplanationObservation",
+        "CellFenceFindingExplanationScalar",
+        "CellFenceFindingExplanationValue",
         "CellFenceFindingSeverity",
         "CellFenceImportReference",
         "CellFencePlugin",
@@ -111,7 +116,7 @@
         "defineReporter",
         "defineRule"
       ],
-      "publicSurfaceHash": "2421d635410b331b6e9dc760aa3fbea2b63481cb46883d8e84fbfe02ae6deeca",
+      "publicSurfaceHash": "d325b98a01faae2318e2744b7676de7d9c45f70d79bacb506b6138121a77e4a7",
       "dependencyEdges": [
         "plugin-api->schema"
       ],
@@ -123,8 +128,8 @@
     },
     "engine": {
       "ownedPathPatterns": 1,
-      "publicSymbols": 135,
-      "publicSurfaceLines": 2325,
+      "publicSymbols": 140,
+      "publicSurfaceLines": 2402,
       "crossCellDependencies": 1,
       "ownedPathSet": [
         "packages/engine/**"
@@ -205,6 +210,11 @@
         "ExecCommandOptions",
         "execCommandSync",
         "Finding",
+        "FindingExplanation",
+        "FindingExplanationContract",
+        "FindingExplanationObservation",
+        "FindingExplanationScalar",
+        "FindingExplanationValue",
         "findingFingerprint",
         "findingWitness",
         "FindingWitness",
@@ -267,7 +277,7 @@
         "WriteAccessResult",
         "writeBaselineFile"
       ],
-      "publicSurfaceHash": "003e1fecbd90b7913e32aa8ca95aca96fa2d6a3fba3639bd7441779942be90c6",
+      "publicSurfaceHash": "ef90ebfdaed902e96137eb735e94eef2ce8eafc878d80d1da2bac50985e62152",
       "dependencyEdges": [
         "engine->schema"
       ],
@@ -303,7 +313,7 @@
     "mcp-proxy": {
       "ownedPathPatterns": 1,
       "publicSymbols": 15,
-      "publicSurfaceLines": 935,
+      "publicSurfaceLines": 936,
       "crossCellDependencies": 1,
       "ownedPathSet": [
         "packages/mcp-proxy/**"
@@ -354,7 +364,7 @@
     "cli": {
       "ownedPathPatterns": 1,
       "publicSymbols": 3,
-      "publicSurfaceLines": 2245,
+      "publicSurfaceLines": 2264,
       "crossCellDependencies": 2,
       "ownedPathSet": [
         "packages/cli/**"
@@ -466,7 +476,7 @@
     "adapter-opentelemetry": {
       "ownedPathPatterns": 1,
       "publicSymbols": 2,
-      "publicSurfaceLines": 143,
+      "publicSurfaceLines": 144,
       "crossCellDependencies": 1,
       "ownedPathSet": [
         "packages/adapter-opentelemetry/**"
@@ -529,7 +539,7 @@
     "plugin-dependency-sovereignty": {
       "ownedPathPatterns": 1,
       "publicSymbols": 2,
-      "publicSurfaceLines": 92,
+      "publicSurfaceLines": 84,
       "crossCellDependencies": 1,
       "ownedPathSet": [
         "packages/plugin-dependency-sovereignty/**"
@@ -638,7 +648,7 @@
     "github-action-baseline-gate": {
       "ownedPathPatterns": 1,
       "publicSymbols": 2,
-      "publicSurfaceLines": 496,
+      "publicSurfaceLines": 523,
       "crossCellDependencies": 2,
       "ownedPathSet": [
         "packages/github-action-baseline-gate/**"
@@ -727,8 +737,8 @@
   },
   "seal": {
     "algorithm": "ed25519",
-    "keyId": "baseline-ed25519-2026-08-23-self-check",
+    "keyId": "baseline-ed25519-2026-09-06",
     "payloadVersion": "seal-metadata-v1",
-    "signature": "4xlvWFcjlRPtLd7R3/6QaKQ+1JKzGURFohhbreE1SxDOy995J9TGsg6nyQvxDBqHFfzdKT3w/+IbtdF/+cwxDg=="
+    "signature": "GCEMbQM9eTLWunXbTWMqu43PY0pTHbrBOdrPbEVkZ5vGpu6NrYtt3SPU/DJNvqom/zmx2+qadkBdsEqu8Jq9Bw=="
   }
 }

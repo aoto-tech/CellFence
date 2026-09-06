@@ -100,6 +100,37 @@ export type SuggestedResolution = {
   details?: Record<string, unknown>;
 };
 
+export type FindingExplanationScalar = string | number | boolean | null;
+
+export type FindingExplanationValue =
+  | FindingExplanationScalar
+  | readonly FindingExplanationScalar[]
+  | { readonly [key: string]: FindingExplanationValue | undefined };
+
+export type FindingExplanationObservation = {
+  description: string;
+  filePath?: string;
+  line?: number;
+  value?: FindingExplanationValue;
+};
+
+export type FindingExplanationContract = {
+  source: "manifest" | "baseline";
+  filePath: string;
+  jsonPointer: string;
+  description: string;
+  value?: FindingExplanationValue;
+  verified?: boolean;
+};
+
+export type FindingExplanation = {
+  schemaVersion: "cellfence.finding-explanation.v1";
+  observedFacts: FindingExplanationObservation[];
+  appliedContracts: FindingExplanationContract[];
+  judgment: string;
+  unverified: string[];
+};
+
 export type PluginFinding<RuleIdentifier extends string = string> = {
   ruleId: RuleIdentifier;
   severity: Severity;
@@ -108,6 +139,12 @@ export type PluginFinding<RuleIdentifier extends string = string> = {
   cellId?: string;
   producerCellId?: string;
   details?: Record<string, unknown>;
+  explanation?: FindingExplanation;
+  /**
+   * @deprecated Normal CellFence diagnostics no longer return remediation
+   * suggestions. The field remains only so older plugins and callers can
+   * compile; emitted findings are normalized without these suggestions.
+   */
   suggestedResolutions?: SuggestedResolution[];
   fingerprint?: string;
   witness?: FindingWitness;

@@ -1,0 +1,1 @@
+Use the existing public APIs between modules whenever possible. Do not import internal implementation files from another module. Do not change manifests, baselines, waivers, CI workflows, or governance configuration unless the task explicitly asks for a governance change.

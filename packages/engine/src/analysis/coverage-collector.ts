@@ -29,7 +29,7 @@ export type CoverageUnresolved = {
   shape: string;
   /** Human-readable reason the analyzer could not resolve this observation. */
   reason: string;
-  /** Optional adapter hint suggesting how the user can make the observation resolvable. */
+  /** @deprecated Coverage reports omit remediation hints from emitted diagnostics. */
   suggestion?: string;
 };
 
@@ -69,7 +69,7 @@ function repoPath(rootDir: string, filePath: string): string {
  * without paying for an extra repository walk.
  */
 export function buildCoverageReport(input: CoverageInput): CoverageReport {
-  const findings = input.unresolved.map((entry) => ({
+  const findings = input.unresolved.map(({ suggestion: _deprecatedSuggestion, ...entry }) => ({
     ...entry,
     filePath: repoPath(input.rootDir, entry.filePath),
   }));

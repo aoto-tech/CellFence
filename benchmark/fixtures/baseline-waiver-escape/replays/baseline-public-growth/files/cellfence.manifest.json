@@ -1,0 +1,17 @@
+{
+  "schemaVersion": "cellfence.manifest.v1",
+  "governance": {
+    "requireOwnership": true,
+    "include": ["src/**"]
+  },
+  "cells": [
+    {
+      "id": "reporting",
+      "ownedPaths": ["src/reporting/**"],
+      "publicEntry": "src/reporting/public.js",
+      "publicSymbols": ["summaryMetric", "varianceMetric"],
+      "consumes": [],
+      "producesArtifacts": []
+    }
+  ]
+}

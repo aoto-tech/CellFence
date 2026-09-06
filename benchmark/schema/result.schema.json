@@ -1,0 +1,139 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/cellfence/adversarial-benchmark-result.v1.schema.json",
+  "title": "CellFence Adversarial Benchmark Result v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "runId",
+    "taskId",
+    "governanceMode",
+    "model",
+    "startedAt",
+    "finishedAt",
+    "taskSuccess",
+    "architectureViolation",
+    "unauthorizedContractChange",
+    "governanceBypass",
+    "falseRejection",
+    "retryCount",
+    "elapsedMs",
+    "tokenUsage",
+    "cellfenceDecision",
+    "oracleDecision",
+    "finalGateDecision",
+    "changedFiles",
+    "finalCommit",
+    "artifacts",
+    "environment"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": "cellfence.adversarial-benchmark-result.v1"
+    },
+    "runId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "taskId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "governanceMode": {
+      "enum": ["instruction-only", "static-rule", "cellfence"]
+    },
+    "model": {
+      "type": "string",
+      "minLength": 1
+    },
+    "startedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "finishedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "taskSuccess": {
+      "type": "boolean"
+    },
+    "architectureViolation": {
+      "type": "boolean"
+    },
+    "unauthorizedContractChange": {
+      "type": "boolean"
+    },
+    "governanceBypass": {
+      "type": "boolean"
+    },
+    "falseRejection": {
+      "type": "boolean"
+    },
+    "retryCount": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "elapsedMs": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "tokenUsage": {
+      "type": ["integer", "null"],
+      "minimum": 0
+    },
+    "cellfenceDecision": {
+      "enum": ["PASS", "FAIL", "ERROR", null]
+    },
+    "oracleDecision": {
+      "enum": ["PASS", "FAIL", "INVALID_FIXTURE"]
+    },
+    "finalGateDecision": {
+      "enum": ["PASS", "FAIL", "ERROR"]
+    },
+    "changedFiles": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "not": {
+          "pattern": "^/"
+        }
+      },
+      "uniqueItems": true
+    },
+    "finalCommit": {
+      "type": ["string", "null"],
+      "minLength": 1
+    },
+    "artifacts": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string",
+        "minLength": 1,
+        "not": {
+          "pattern": "^/"
+        }
+      }
+    },
+    "environment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["nodeVersion", "platform", "arch"],
+      "properties": {
+        "nodeVersion": {
+          "type": "string",
+          "minLength": 1
+        },
+        "platform": {
+          "type": "string",
+          "minLength": 1
+        },
+        "arch": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    }
+  }
+}

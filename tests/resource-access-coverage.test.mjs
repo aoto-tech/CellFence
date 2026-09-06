@@ -1483,6 +1483,29 @@ test("collectResourceAccesses rejects near-miss object properties and non-resour
   }
 });
 
+test("collectResourceAccesses normalizes quoted dotted SQL selectors", () => {
+  const rootDir = fs.mkdtempSync(path.join(os.tmpdir(), "cellfence-resource-sql-selector-"));
+  try {
+    const lines = [
+      "declare const sqlClient: { query(sql: string): unknown };",
+      "export function runRuntime(): void {",
+      "  sqlClient.query('select * from \"tenant\"   .   \"app_users\" join \"audit\"  .  \"events\" on true');",
+      "  sqlClient.query('update \"tenant\" . \"app_users\" set id = id');",
+      "}",
+    ];
+    const filePath = writeRuntimeSource(rootDir, lines);
+    const accesses = summarizeAccesses(collectResourceAccesses(createResourceContext(rootDir), filePath));
+
+    assert.deepEqual(accesses.map((access) => `${access.kind}:${access.access}:${access.selector}:${access.detectedBy}`), [
+      "database:read:audit.events:sql-literal",
+      "database:read:tenant.app_users:sql-literal",
+      "database:write:tenant.app_users:sql-literal",
+    ]);
+  } finally {
+    fs.rmSync(rootDir, { recursive: true, force: true });
+  }
+});
+
 test("collectResourceAccesses keeps SQL string resolution lexical and fail-closed for reassignment", () => {
   const rootDir = fs.mkdtempSync(path.join(os.tmpdir(), "cellfence-resource-sql-lexical-"));
   try {

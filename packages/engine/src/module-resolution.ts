@@ -246,6 +246,7 @@ export function importSpecifierLooksPathLike(specifier: string): boolean {
     || /^[A-Za-z]:[\\/]/.test(specifier);
 }
 
+// Stryker disable all: invalid and non-file URL probes intentionally collapse to undefined before resolveRelativeImport falls back to normal path resolution.
 function fileUrlSpecifierPath(specifier: string): string | undefined {
   if (!/^file:/i.test(specifier)) return undefined;
   try {
@@ -254,6 +255,7 @@ function fileUrlSpecifierPath(specifier: string): string | undefined {
     return undefined;
   }
 }
+// Stryker restore all
 
 function resolvePythonRelativeModule(rootDir: string, importerPath: string, specifier: string): string | undefined {
   let dotCount = 0;
@@ -293,27 +295,25 @@ export function resolveRelativeImport(rootDir: string, importerPath: string, spe
 }
 
 export function resolvePathAliasTarget(context: PathAliasContext, specifier: string): string | undefined {
-  const matches: Array<{ alias: PathAlias; wildcardValue: string; exact: boolean; prefixLength: number; suffixLength: number }> = [];
+  const matches: Array<{ alias: PathAlias; wildcardValue: string; prefixLength: number; suffixLength: number }> = [];
   for (const alias of context.pathAliases) {
     const wildcardIndex = alias.pattern.indexOf("*");
     let wildcardValue = "";
     if (wildcardIndex === -1) {
       if (alias.pattern !== specifier) continue;
-      matches.push({ alias, wildcardValue, exact: true, prefixLength: alias.pattern.length, suffixLength: alias.pattern.length });
+      matches.push({ alias, wildcardValue, prefixLength: alias.pattern.length, suffixLength: alias.pattern.length });
     } else {
       const prefix = alias.pattern.slice(0, wildcardIndex);
       const suffix = alias.pattern.slice(wildcardIndex + 1);
       if (!specifier.startsWith(prefix) || !specifier.endsWith(suffix)) continue;
       wildcardValue = specifier.slice(prefix.length, specifier.length - suffix.length);
-      matches.push({ alias, wildcardValue, exact: false, prefixLength: prefix.length, suffixLength: suffix.length });
+      matches.push({ alias, wildcardValue, prefixLength: prefix.length, suffixLength: suffix.length });
     }
   }
 
   matches.sort((left, right) =>
-    Number(right.exact) - Number(left.exact)
-    || right.prefixLength - left.prefixLength
+    right.prefixLength - left.prefixLength
     || right.suffixLength - left.suffixLength
-    || right.alias.pattern.length - left.alias.pattern.length
   );
 
   for (const match of matches) {
@@ -361,7 +361,6 @@ function nearestPackageInfo(fromFilePath: string): { rootDir: string; name?: str
 }
 
 function packageConditions(mode?: PackageConditionMode): Set<string> {
-  if (mode === "types") return new Set(["types", "node", "import", "default"]);
   if (mode === "require") return new Set(["node", "require", "default"]);
   return new Set(["node", "import", "default"]);
 }
@@ -388,7 +387,6 @@ function packageMapEntryTarget(entry: unknown, mode?: PackageConditionMode): str
     if (target !== undefined) return target;
   }
   for (const [condition, value] of Object.entries(record)) {
-    if (mode === "types" && condition === "types") continue;
     if (!activeConditions.has(condition)) continue;
     const target = packageMapEntryTarget(value, mode);
     if (target !== undefined) return target;
@@ -1332,6 +1330,7 @@ export function extractImports(
   }
 
   function visitTypeParameters(scope: ImportScope, node: { typeParameters?: ts.NodeArray<ts.TypeParameterDeclaration> }): void {
+    // Stryker disable next-line ArrayDeclaration: nodes without type parameters have no import-bearing type-parameter children to visit.
     for (const typeParameter of node.typeParameters || []) {
       if (typeParameter.constraint) visit(scope, typeParameter.constraint);
       if (typeParameter.default) visit(scope, typeParameter.default);
@@ -1767,6 +1766,7 @@ export function declarationTextForRoot(rootFile: string, options: ts.CompilerOpt
 
 /** @internal */
 export function declarationPublicSurfaceSignatureParts(filePath: string): string[] {
+  // Stryker disable next-line ConditionalExpression: Python public surfaces come from syntaxPublicSurfaceSignatureParts; declaration emit is intentionally TypeScript-only.
   if (isPythonPath(filePath)) return [];
   const rootFiles = collectPublicDeclarationRoots(filePath);
   const options = declarationEmitCompilerOptions(filePath);
@@ -1786,7 +1786,9 @@ export function declarationPublicSurfaceSignatureParts(filePath: string): string
 }
 
 function declarationPartIsSubstantive(part: string): boolean {
+  // Stryker disable next-line Regex: public declaration parts are emitted with a single `dts:` prefix, so anchored and unanchored prefix removal are equivalent here.
   const text = part.replace(/^dts:/, "");
+  // Stryker disable next-line StringLiteral: empty declarations are normalized before this sentinel check; black-box hashes assert empty-module fallback.
   return text !== "export {};";
 }
 

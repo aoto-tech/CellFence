@@ -1,0 +1,15 @@
+{
+  "schemaVersion": "cellfence.baseline.v1",
+  "generatedAt": "2026-09-05T00:00:00.000Z",
+  "cells": {
+    "reporting": {
+      "ownedPathPatterns": 1,
+      "publicSymbols": 2,
+      "publicSurfaceLines": 8,
+      "crossCellDependencies": 0,
+      "ownedPathSet": ["src/reporting/**"],
+      "publicEntryPath": "src/reporting/public.js",
+      "publicSymbolSet": ["summaryMetric", "varianceMetric"]
+    }
+  }
+}

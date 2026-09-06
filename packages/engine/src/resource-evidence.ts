@@ -9,7 +9,7 @@ import {
 } from "@cellfence/schema";
 
 import { errorMessage } from "./errors.js";
-import { addFinding, codeResolution, manifestResolution } from "./findings.js";
+import { addFinding } from "./findings.js";
 import { repoPath } from "./file-index.js";
 import { readJsonFile } from "./json-file.js";
 import { addResourceAccess, type ResourceAccessMode, type ResourceAccessReference } from "./resource-access.js";
@@ -224,21 +224,6 @@ export function resourceEvidenceAccesses(
           detectedBy: access.detectedBy,
           confidence: access.confidence,
         },
-        suggestedResolutions: [
-          codeResolution(`Stop emitting runtime evidence for undeclared ${access.kind} access if it is accidental`, {
-            kind: access.kind,
-            access: access.access,
-            selector: access.selector,
-          }),
-          manifestResolution(`Declare runtime ${access.kind} ${access.access} access for ${access.selector}`, Boolean(cell.locked), {
-            cell: cell.id,
-            resourceContract: {
-              kind: access.kind,
-              access: [access.access],
-              selectors: [access.selector],
-            },
-          }),
-        ],
       });
     }
   }

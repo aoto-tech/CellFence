@@ -24,3 +24,52 @@ test("CLI check output uses the engine canonical finding fingerprint fallback", 
   assert.equal(cliFindingFingerprint(finding), engineFindingFingerprint(finding));
   assert.equal(cliFindingFingerprint({ ...finding, fingerprint: "precomputed-fingerprint" }), "precomputed-fingerprint");
 });
+
+test("finding explanation metadata does not affect canonical fingerprints", () => {
+  const finding = {
+    ruleId: "CELLFENCE_PRIVATE_IMPORT",
+    severity: "error",
+    filePath: "src/consumer/public.ts",
+    cellId: "consumer",
+    producerCellId: "producer",
+    message: "consumer imports private producer source",
+    details: {
+      specifier: "../producer/internal",
+      targetPath: "src/producer/internal.ts",
+      line: 1,
+    },
+  };
+  const firstExplanation = {
+    schemaVersion: "cellfence.finding-explanation.v1",
+    observedFacts: [{
+      description: "first wording",
+      filePath: "src/consumer/public.ts",
+      line: 1,
+      value: { targetPath: "src/producer/internal.ts" },
+    }],
+    appliedContracts: [],
+    judgment: "first judgment wording",
+    unverified: ["first unknown"],
+  };
+  const secondExplanation = {
+    schemaVersion: "cellfence.finding-explanation.v1",
+    observedFacts: [{
+      description: "second wording",
+      filePath: "src/consumer/public.ts",
+      line: 1,
+      value: { targetPath: "src/producer/internal.ts" },
+    }],
+    appliedContracts: [],
+    judgment: "second judgment wording",
+    unverified: ["second unknown"],
+  };
+
+  assert.equal(
+    engineFindingFingerprint({ ...finding, explanation: firstExplanation }),
+    engineFindingFingerprint({ ...finding, explanation: secondExplanation }),
+  );
+  assert.equal(
+    cliFindingFingerprint({ ...finding, explanation: firstExplanation }),
+    cliFindingFingerprint({ ...finding, explanation: secondExplanation }),
+  );
+});

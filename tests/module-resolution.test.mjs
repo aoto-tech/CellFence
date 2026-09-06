@@ -5,6 +5,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
+import { pathToFileURL } from "node:url";
 import ts from "typescript";
 
 import {
@@ -60,8 +61,11 @@ test("module resolution treats drive-letter specifiers as path-like imports", ()
   assert.equal(importSpecifierLooksPathLike("./local"), true);
   assert.equal(importSpecifierLooksPathLike("../parent"), true);
   assert.equal(importSpecifierLooksPathLike("/absolute"), true);
+  assert.equal(importSpecifierLooksPathLike("file:///repo/src/public.js"), true);
+  assert.equal(importSpecifierLooksPathLike("FILE:///repo/src/public.js"), true);
   assert.equal(importSpecifierLooksPathLike("C:/repo/src/public"), true);
   assert.equal(importSpecifierLooksPathLike("D:\\repo\\src\\public"), true);
+  assert.equal(importSpecifierLooksPathLike("prefixfile:///repo/src/public.js"), false);
   assert.equal(importSpecifierLooksPathLike("pkg/C:/repo/src/public"), false);
   assert.equal(importSpecifierLooksPathLike("@scope/package"), false);
   assert.equal(importSpecifierLooksPathLike("node:fs"), false);
@@ -88,6 +92,10 @@ test("module resolution maps NodeNext runtime specifiers to source files", () =>
     assert.equal(resolveRelativeImport(rootDir, "src/app.ts", "./core/view.jsx"), "src/core/view.tsx");
     assert.equal(resolveRelativeImport(rootDir, "src/app.ts", "./core/mod.mjs"), "src/core/mod.mts");
     assert.equal(resolveRelativeImport(rootDir, "src/app.ts", "./core/legacy.cjs"), "src/core/legacy.cts");
+    assert.equal(
+      resolveRelativeImport(rootDir, "src/app.ts", pathToFileURL(path.join(rootDir, "src/core/public.js")).href),
+      "src/core/public.ts",
+    );
     assert.equal(resolveRelativeImport(rootDir, "src/app.ts", "./routes/posts.$postId"), "src/routes/posts.$postId.tsx");
     assert.equal(resolveRelativeImport(rootDir, "src/app.ts", "./routes/es2015.symbol"), "src/routes/es2015.symbol.ts");
     assert.equal(resolveRelativeImport(rootDir, "src/app.ts", "./routes/raw-template?script-string"), "src/routes/raw-template.ts");
@@ -267,6 +275,48 @@ test("module resolution reads alias edge cases without widening invalid config",
       rootDir,
       pathAliases: [{ pattern: "@literal", targets: [path.join(rootDir, "packages/core/src/*literal").split(path.sep).join("/")] }],
     }, "@literal"), "packages/core/src/literal.ts");
+  } finally {
+    fs.rmSync(rootDir, { recursive: true, force: true });
+  }
+});
+
+test("module resolution prefers the most specific path alias regardless of declaration order", () => {
+  const rootDir = fs.mkdtempSync(path.join(os.tmpdir(), "cellfence-module-alias-specificity-"));
+  try {
+    fs.mkdirSync(path.join(rootDir, "exact"), { recursive: true });
+    fs.mkdirSync(path.join(rootDir, "wildcard"), { recursive: true });
+    fs.mkdirSync(path.join(rootDir, "scoped/core"), { recursive: true });
+    fs.mkdirSync(path.join(rootDir, "scoped/fallback/core"), { recursive: true });
+    fs.mkdirSync(path.join(rootDir, "suffix"), { recursive: true });
+    fs.mkdirSync(path.join(rootDir, "suffix/fallback/user"), { recursive: true });
+    fs.writeFileSync(path.join(rootDir, "exact/special.ts"), "export const exact = true;\n");
+    fs.writeFileSync(path.join(rootDir, "wildcard/special.ts"), "export const wildcard = true;\n");
+    fs.writeFileSync(path.join(rootDir, "scoped/core/special.ts"), "export const specificPrefix = true;\n");
+    fs.writeFileSync(path.join(rootDir, "scoped/fallback/core/special.ts"), "export const broadPrefix = true;\n");
+    fs.writeFileSync(path.join(rootDir, "suffix/user.ts"), "export const specificSuffix = true;\n");
+    fs.writeFileSync(path.join(rootDir, "suffix/fallback/user/model.ts"), "export const broadSuffix = true;\n");
+
+    const exactAliases = [
+      { pattern: "@pkg/*", targets: [path.join(rootDir, "wildcard/*").split(path.sep).join("/")] },
+      { pattern: "@pkg/special", targets: [path.join(rootDir, "exact/special").split(path.sep).join("/")] },
+    ];
+    assert.equal(resolvePathAliasTarget({ rootDir, pathAliases: exactAliases }, "@pkg/special"), "exact/special.ts");
+
+    const prefixBroadFirst = [
+      { pattern: "@scope/*", targets: [path.join(rootDir, "scoped/fallback/*").split(path.sep).join("/")] },
+      { pattern: "@scope/core/*", targets: [path.join(rootDir, "scoped/core/*").split(path.sep).join("/")] },
+    ];
+    const prefixSpecificFirst = [...prefixBroadFirst].reverse();
+    assert.equal(resolvePathAliasTarget({ rootDir, pathAliases: prefixBroadFirst }, "@scope/core/special"), "scoped/core/special.ts");
+    assert.equal(resolvePathAliasTarget({ rootDir, pathAliases: prefixSpecificFirst }, "@scope/core/special"), "scoped/core/special.ts");
+
+    const suffixBroadFirst = [
+      { pattern: "#feature/*", targets: [path.join(rootDir, "suffix/fallback/*").split(path.sep).join("/")] },
+      { pattern: "#feature/*/model", targets: [path.join(rootDir, "suffix/*").split(path.sep).join("/")] },
+    ];
+    const suffixSpecificFirst = [...suffixBroadFirst].reverse();
+    assert.equal(resolvePathAliasTarget({ rootDir, pathAliases: suffixBroadFirst }, "#feature/user/model"), "suffix/user.ts");
+    assert.equal(resolvePathAliasTarget({ rootDir, pathAliases: suffixSpecificFirst }, "#feature/user/model"), "suffix/user.ts");
   } finally {
     fs.rmSync(rootDir, { recursive: true, force: true });
   }
@@ -489,6 +539,16 @@ test("package maps honor condition order, arrays, wildcard precedence, and packa
           require: "./src/require.js",
         },
         "#types-fallback": { types: "./src/types.js" },
+        "#types-condition-fallback": {
+          types: { browser: false },
+          import: "./src/import.js",
+          default: "./src/default.js",
+        },
+        "#types-without-types": { import: "./src/import.js" },
+        "#loop-fallback": {
+          import: { browser: false },
+          default: "./src/default.js",
+        },
         "#unknown": { custom: "./src/unknown.js" },
         "plain/feature": "./src/feature.js",
         ...conditionImports,
@@ -533,6 +593,9 @@ test("package maps honor condition order, arrays, wildcard precedence, and packa
     assert.equal(resolvePackageImportsTarget(rootDir, importerPath, "#default-priority", "import"), "packages/app/src/default.ts");
     assert.equal(resolvePackageImportsTarget(rootDir, importerPath, "#require-fallback", "import"), undefined);
     assert.equal(resolvePackageImportsTarget(rootDir, importerPath, "#types-fallback", "import"), undefined);
+    assert.equal(resolvePackageImportsTarget(rootDir, importerPath, "#types-condition-fallback", "types"), "packages/app/src/import.ts");
+    assert.equal(resolvePackageImportsTarget(rootDir, importerPath, "#types-without-types", "types"), "packages/app/src/import.ts");
+    assert.equal(resolvePackageImportsTarget(rootDir, importerPath, "#loop-fallback", "import"), "packages/app/src/default.ts");
     assert.equal(resolvePackageImportsTarget(rootDir, importerPath, "plain/feature"), undefined);
     assert.equal(resolvePackageImportsTarget(rootDir, "orphan/importer.ts", "#condition"), undefined);
     for (const [mode, priorities] of Object.entries(conditionPriorities)) {
@@ -894,6 +957,51 @@ test("module resolution extracts imports and reports computed module loading", (
     ]);
     fs.writeFileSync(path.join(rootDir, "src/no-imports.ts"), "const value = 1;\n");
     assert.deepEqual(extractImports(context(rootDir), path.join(rootDir, "src/no-imports.ts"), []), []);
+  } finally {
+    fs.rmSync(rootDir, { recursive: true, force: true });
+  }
+});
+
+test("module resolution visits type parameters, parameter metadata, and binding expressions for imports", () => {
+  const rootDir = fs.mkdtempSync(path.join(os.tmpdir(), "cellfence-module-type-binding-imports-"));
+  try {
+    fs.mkdirSync(path.join(rootDir, "src"), { recursive: true });
+    const filePath = path.join(rootDir, "src/app.ts");
+    fs.writeFileSync(
+      filePath,
+      [
+        "declare const input: Record<string, unknown>;",
+        "export function usesTypes<T extends import('./constraint.js').Constraint = import('./default-type.js').DefaultType>(",
+        "  { [require('./param-key.js')]: value = import('./param-default.js') }: Record<string, unknown>,",
+        "  arg: import('./parameter.js').Parameter = require('./parameter-default.js'),",
+        "): import('./return.js').ReturnType {",
+        "  const { [require('./binding-key.js')]: local = import('./binding-default.js') } = input;",
+        "  const typed: import('./variable-type.js').Variable = local as never;",
+        "  return arg as never;",
+        "}",
+        "export function plainGeneric<U>(value = require('./untyped-default.js')) {",
+        "  return value as U;",
+        "}",
+        "",
+      ].join("\n"),
+    );
+
+    const warnings = [];
+    const references = extractImports(context(rootDir), filePath, warnings);
+    assert.deepEqual(references.map((reference) => [reference.kind, reference.specifier, reference.typeOnly]), [
+      ["import", "./constraint.js", true],
+      ["import", "./default-type.js", true],
+      ["require", "./param-key.js", false],
+      ["dynamic-import", "./param-default.js", false],
+      ["import", "./parameter.js", true],
+      ["require", "./parameter-default.js", false],
+      ["import", "./return.js", true],
+      ["require", "./binding-key.js", false],
+      ["dynamic-import", "./binding-default.js", false],
+      ["import", "./variable-type.js", true],
+      ["require", "./untyped-default.js", false],
+    ]);
+    assert.deepEqual(warnings, []);
   } finally {
     fs.rmSync(rootDir, { recursive: true, force: true });
   }
@@ -3253,6 +3361,8 @@ test("module resolution declaration parts use relative-key order and syntax fall
     const emptyPath = path.join(rootDir, "a/empty.ts");
     fs.writeFileSync(emptyPath, "");
     assert.deepEqual(declarationPublicSurfaceSignatureParts(emptyPath), ["dts:export {};"]);
+    assert.deepEqual(syntaxPublicSurfaceSignatureParts(emptyPath), []);
+    assert.equal(publicSurfaceHash(emptyPath), sha256(""));
   } finally {
     fs.rmSync(rootDir, { recursive: true, force: true });
   }

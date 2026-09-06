@@ -356,6 +356,7 @@ test("import policy judgments are derived from normalized observed import facts"
     specifier: "../producer/internal",
     kind: "import",
     typeOnly: false,
+    line: 1,
     targetPath: "src/producer/internal.ts",
     producerCellId: "producer",
     isExternal: false,
