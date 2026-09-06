@@ -21,9 +21,9 @@ The harness deliberately separates roles:
 
 ```bash
 npm run build
-node cellfence-friction-study/harness/generate-fixtures.mjs --count-per-template 15
-node cellfence-friction-study/harness/run.mjs --mode simulate-updated --limit 3
-node cellfence-friction-study/harness/classify.mjs
+node docs/research/friction-study/harness/generate-fixtures.mjs --count-per-template 15
+node docs/research/friction-study/harness/run.mjs --mode simulate-updated --limit 3
+node docs/research/friction-study/harness/classify.mjs
 ```
 
 The simulated modes exist only to smoke-test the harness:
@@ -35,9 +35,9 @@ The simulated modes exist only to smoke-test the harness:
 Use `external` for the real experiment:
 
 ```bash
-node cellfence-friction-study/harness/run.mjs \
+node docs/research/friction-study/harness/run.mjs \
   --mode external \
-  --conditions cellfence-friction-study/harness/conditions.example.json \
+  --conditions docs/research/friction-study/harness/conditions.example.json \
   --agent-command 'bash -lc "$CELLFENCE_STUDY_AGENT_COMMAND"'
 ```
 

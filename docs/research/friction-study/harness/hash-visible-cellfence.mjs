@@ -6,7 +6,7 @@ import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const repoRoot = path.resolve(__dirname, "..", "..");
+const repoRoot = path.resolve(__dirname, "..", "..", "..", "..");
 const cellfenceCli = path.join(repoRoot, "packages", "cli", "dist", "index.js");
 
 function runCli(args, options = {}) {

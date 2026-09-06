@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const studyRoot = path.resolve(__dirname, "..");
-const repoRoot = path.resolve(studyRoot, "..");
+const repoRoot = path.resolve(studyRoot, "..", "..", "..");
 
 function parseArgs(argv) {
   const args = {

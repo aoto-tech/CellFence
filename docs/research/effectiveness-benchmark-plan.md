@@ -51,7 +51,7 @@ blocks the right changes with acceptable friction.
 
 ## Ratchet Bypass A/B Study
 
-`cellfence-friction-study/` contains a deterministic harness for one focused
+`docs/research/friction-study/` contains a deterministic harness for one focused
 question: whether exposing next accepted baseline material in ratchet errors increases
 baseline hand-edit bypasses.
 

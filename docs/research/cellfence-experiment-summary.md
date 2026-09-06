@@ -197,6 +197,6 @@ protocol is defined in `docs/research/effectiveness-benchmark-plan.md`:
 
 That would turn the current pilot into a repeatable benchmark rather than a one-off research run.
 
-For ratchet-specific operator behavior, use `cellfence-friction-study/` to
+For ratchet-specific operator behavior, use `docs/research/friction-study/` to
 measure whether a ratchet error causes a subject agent to take the reviewed
 baseline update path or a bypass path such as hand-editing the baseline.

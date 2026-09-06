@@ -73,7 +73,7 @@ export default tseslint.config(
     },
   },
   {
-    files: ["cellfence-friction-study/**/*.{js,mjs,cjs,ts,tsx,mts,cts}"],
+    files: ["docs/research/friction-study/**/*.{js,mjs,cjs,ts,tsx,mts,cts}"],
     rules: {
       "@typescript-eslint/no-unused-vars": "off",
       "no-unused-vars": "off",

@@ -316,7 +316,7 @@ function changedFileIsBaseline(name: string, baselineFile: string): boolean {
 function changedFileIsImplementation(name: string, baselineFile: string): boolean {
   const normalized = normalizeRepoPathForAction(name);
   if (changedFileIsBaseline(normalized, baselineFile)) return false;
-  return !normalized.startsWith(".cellfence/") && !normalized.endsWith(".md") && normalized !== "PROGRESS.md";
+  return !normalized.startsWith(".cellfence/") && !normalized.endsWith(".md");
 }
 
 function parseCommentMode(value: string | undefined): "update" | "create" | "disabled" {
