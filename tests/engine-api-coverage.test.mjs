@@ -1363,20 +1363,20 @@ test("engine changed checks require an explicit plugin cache identity", () => {
       plugins: [plugin],
     });
     assert.equal(uncached.baseCacheHit, false);
-    const seeded = checkChangedRepository({
+    const seeded = withFrozenDate("2026-01-01T00:00:00.000Z", () => checkChangedRepository({
       rootDir,
       manifestPath: "cellfence.manifest.json",
       baseRef: "HEAD",
       plugins: [plugin],
       pluginCacheKey: "cache-test@1",
-    });
-    const cached = checkChangedRepository({
+    }));
+    const cached = withFrozenDate("2026-01-01T00:00:00.000Z", () => checkChangedRepository({
       rootDir,
       manifestPath: "cellfence.manifest.json",
       baseRef: "HEAD",
       plugins: [plugin],
       pluginCacheKey: "cache-test@1",
-    });
+    }));
     assert.equal(seeded.baseCacheHit, false);
     assert.equal(cached.baseCacheHit, true);
   } finally {

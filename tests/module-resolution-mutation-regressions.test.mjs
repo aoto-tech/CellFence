@@ -85,6 +85,8 @@ test("createRequire origin recognition distinguishes globals, shadows, literals,
       ["node:module", undefined],
       ["./dep.cjs", "src/base.cjs"],
     ]);
+    assert.equal(urlBase.references[1].kind, "require");
+    assert.equal(urlBase.references[1].typeOnly, false);
     assert.deepEqual(urlBase.warnings, []);
 
     const urlSingleBasePath = path.join(rootDir, "src/url-single-base.cjs");
@@ -192,6 +194,107 @@ test("multiple internal declaration ranges are stripped from the end without cor
         "",
       ].join("\n"),
     );
+  } finally {
+    fs.rmSync(rootDir, { recursive: true, force: true });
+  }
+});
+
+
+test("source declarations remove multiple internal spans before declaration emit", () => {
+  const rootDir = fs.mkdtempSync(path.join(os.tmpdir(), "cellfence-source-internal-spans-"));
+  try {
+    for (const extension of ["ts", "mts", "cts"]) {
+      const filePath = path.join(rootDir, `api.${extension}`);
+      fs.writeFileSync(filePath, [
+        "/** @internal */ export interface HiddenA { a: string }",
+        "export interface PublicA { a: string }",
+        "/** @internal */ export type HiddenB = number;",
+        "export type PublicB = boolean;",
+        "/** @internal */ export declare const hiddenC: unique symbol;",
+        "export declare const publicC: string;",
+        "",
+      ].join("\n"));
+      assert.equal(declarationTextForRoot(filePath, {}), [
+        "export interface PublicA {",
+        "    a: string;",
+        "}",
+        "export type PublicB = boolean;",
+        "export declare const publicC: string;",
+        "",
+      ].join("\n"), extension);
+    }
+  } finally {
+    fs.rmSync(rootDir, { recursive: true, force: true });
+  }
+});
+
+test("assigned require aliases retain complete unresolved diagnostics", () => {
+  const rootDir = fs.mkdtempSync(path.join(os.tmpdir(), "cellfence-assigned-loader-diagnostic-"));
+  try {
+    for (const initializer of ["require", "createRequire(import.meta.url)"]) {
+      const result = scan(rootDir, [
+        "import { createRequire } from 'node:module';",
+        "let assigned;",
+        `assigned = ${initializer};`,
+        "assigned('./hidden.cjs');",
+      ].join("\n"), "src/assigned.mts");
+      assert.deepEqual(result.references.map((reference) => reference.specifier), ["node:module"]);
+      assert.deepEqual(result.warnings, [{
+        ruleId: "CELLFENCE_UNSUPPORTED_DYNAMIC_REQUIRE",
+        severity: "warning",
+        filePath: "src/assigned.mts",
+        message: "assigned require alias cannot be resolved statically at line 3",
+        details: { line: 3 },
+      }]);
+    }
+  } finally {
+    fs.rmSync(rootDir, { recursive: true, force: true });
+  }
+});
+
+test("recognized loader bindings do not turn ordinary calls or properties into imports", () => {
+  const rootDir = fs.mkdtempSync(path.join(os.tmpdir(), "cellfence-loader-recognition-"));
+  try {
+    const ordinary = scan(rootDir, [
+      "const createRequire = (origin: string) => (name: string) => name;",
+      "const loader = createRequire('/tmp/ordinary.cjs');",
+      "loader('./ordinary.cjs');",
+      "const other = { require: (name: string) => name };",
+      "other.require('./property.cjs');",
+    ].join("\n"));
+    assert.deepEqual(ordinary.references, []);
+    assert.deepEqual(ordinary.warnings, []);
+
+    const builtin = scan(rootDir, [
+      "module.require('./module.cjs');",
+      "globalThis.require('./global.cjs');",
+      "Reflect.apply(require, null, ['./reflected.cjs']);",
+    ].join("\n"), "src/builtins.cjs");
+    assert.deepEqual(builtin.references.map(({ specifier, resolutionBasePath }) => [specifier, resolutionBasePath]), [
+      ["./module.cjs", undefined],
+      ["./global.cjs", undefined],
+      ["./reflected.cjs", undefined],
+    ]);
+    assert.deepEqual(builtin.warnings, []);
+
+    const escaped = scan(rootDir, "consume(require);", "src/escaped.cjs");
+    assert.deepEqual(escaped.references, []);
+    assert.deepEqual(escaped.warnings, [{
+      ruleId: "CELLFENCE_UNSUPPORTED_DYNAMIC_REQUIRE",
+      severity: "warning",
+      filePath: "src/escaped.cjs",
+      message: "computed escaped require() cannot be resolved statically at line 1",
+      details: { line: 1 },
+    }]);
+
+    const invalidUrl = scan(rootDir, [
+      "import { createRequire } from 'node:module';",
+      "const loader = createRequire('file://[invalid');",
+      "loader('./invalid.cjs');",
+    ].join("\n"), "src/invalid-url.mts");
+    assert.deepEqual(invalidUrl.references.map((reference) => reference.specifier), ["node:module"]);
+    assert.equal(invalidUrl.warnings.length, 1);
+    assert.equal(invalidUrl.warnings[0].severity, "warning");
   } finally {
     fs.rmSync(rootDir, { recursive: true, force: true });
   }

@@ -1112,8 +1112,9 @@ export function extractImports(
       && ts.isMetaProperty(unwrapped.expression) && unwrapped.expression.keywordToken === ts.SyntaxKind.ImportKeyword) return filePath;
     const literal = staticModuleSpecifier(scope, unwrapped);
     if (literal !== undefined) {
+      if (!literal.startsWith("file:")) return path.isAbsolute(literal) ? literal : undefined;
       try {
-        return literal.startsWith("file:") ? fileURLToPath(literal) : path.isAbsolute(literal) ? literal : undefined;
+        return fileURLToPath(literal);
       } catch { /* Invalid file URLs fall through to the unresolved result below. */ }
     }
     if (ts.isNewExpression(unwrapped) && ts.isIdentifier(unwrapped.expression)
@@ -1131,11 +1132,10 @@ export function extractImports(
 
   function requireBindingForExpression(scope: ImportScope, expression: ts.Expression): "require" | RequireBinding {
     const unwrapped = unwrapExpression(expression);
-    if (ts.isIdentifier(unwrapped)) {
-      const binding = bindingFor(scope, unwrapped.text);
-      if (isRequireBinding(binding)) return binding;
-    }
-    if (ts.isCallExpression(unwrapped) && createRequireKind(scope, unwrapped.expression)) {
+    // Callers have already recognized a require-like expression. Preserve its
+    // binding instead of repeating recognition and silently defaulting an alias.
+    if (ts.isIdentifier(unwrapped)) return bindingFor(scope, unwrapped.text) as "require" | RequireBinding;
+    if (ts.isCallExpression(unwrapped)) {
       const origin = requireOrigin(scope, unwrapped.arguments[0]);
       return origin === filePath ? "require" : { requireBase: origin === undefined ? undefined : repoPath(context.rootDir, origin) };
     }
@@ -1227,18 +1227,28 @@ export function extractImports(
     return true;
   }
 
-  function addRequireCallReference(node: ts.CallExpression, sourceName: string, specifier: string | undefined, binding: "require" | RequireBinding = "require"): void {
-    if (specifier && (binding === "require" || binding.requireBase !== undefined)) {
-      addReference(specifier, "require", node, false, binding === "require" ? undefined : binding.requireBase);
-    } else {
-      warnings.push({
-        ruleId: "CELLFENCE_UNSUPPORTED_DYNAMIC_REQUIRE",
-        severity: "warning",
-        filePath: importerPath,
-        message: `computed ${sourceName}() cannot be resolved statically at line ${getLineNumber(sourceFile, node)}`,
-        details: { line: getLineNumber(sourceFile, node) },
-      });
+  function addUnsupportedRequireWarning(node: ts.CallExpression, sourceName: string): void {
+    warnings.push({
+      ruleId: "CELLFENCE_UNSUPPORTED_DYNAMIC_REQUIRE",
+      severity: "warning",
+      filePath: importerPath,
+      message: `computed ${sourceName}() cannot be resolved statically at line ${getLineNumber(sourceFile, node)}`,
+      details: { line: getLineNumber(sourceFile, node) },
+    });
+  }
+
+  function addRequireCallReference(node: ts.CallExpression, sourceName: string, specifier: string | undefined, binding: "require" | RequireBinding): void {
+    if (specifier) {
+      if (binding === "require") {
+        addReference(specifier, "require", node, false);
+        return;
+      }
+      if (binding.requireBase !== undefined) {
+        addReference(specifier, "require", node, false, binding.requireBase);
+        return;
+      }
     }
+    addUnsupportedRequireWarning(node, sourceName);
   }
 
   function dynamicExecutionSourceName(scope: ImportScope, node: ts.CallExpression): string | undefined {
@@ -1456,7 +1466,7 @@ export function extractImports(
         const requireCall = requireCallArgument(scope, node);
         if (requireCall) addRequireCallReference(node, requireCall.sourceName, requireCall.specifier, requireCall.binding);
         else if (node.arguments.some((argument) => isRequireLikeExpression(scope, argument))) {
-          addRequireCallReference(node, "escaped require", undefined);
+          addUnsupportedRequireWarning(node, "escaped require");
         }
         addDynamicExecutionRequireReferences(scope, node);
       }
