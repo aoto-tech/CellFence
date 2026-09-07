@@ -200,3 +200,15 @@ test("fixture directories maintain hygiene", () => {
     }
   }
 });
+
+test("fixture index references existing paths", () => {
+  const indexFile = path.join(root, "fixtures", "README.md");
+  assert.ok(fs.existsSync(indexFile), "fixtures/README.md should exist");
+  const content = fs.readFileSync(indexFile, "utf8");
+  const matches = [...content.matchAll(/fixtures\/(?:valid|invalid)\/[a-z0-9-]+/gu)];
+  assert.ok(matches.length > 0, "fixtures/README.md should list fixtures");
+  for (const match of matches) {
+    const fixturePath = path.join(root, match[0]);
+    assert.ok(fs.existsSync(fixturePath), `Fixture path should exist: ${fixturePath}`);
+  }
+});

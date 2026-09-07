@@ -2,6 +2,17 @@
 
 CellFence changes should keep the implementation narrow and the specification honest.
 
+## Contributor Workflow for Small Issues
+
+If you are picking up a small issue or making your first contribution:
+
+1. **Pick an issue**: Look for issues tagged [`good first issue`](https://github.com/pushnanashi2/CellFence/labels/good%20first%20issue) or [`help wanted`](https://github.com/pushnanashi2/CellFence/labels/help%20wanted).
+2. **Comment before starting**: Leave a comment on the issue stating that you intend to work on it, so effort is not duplicated.
+3. **Stay focused on acceptance criteria**: Keep pull requests focused specifically on the scope and acceptance criteria defined in the issue. Avoid bundling unrelated refactorings or cosmetic edits.
+4. **Run fast validation first**: Run the smallest relevant check first (e.g. `npm run build`, `node --test tests/<relevant-test>.mjs`, or `npm test`). If running full suites or slow mutation checks is not feasible in your local environment, report skipped checks honestly in your pull request description.
+5. **Keep PRs clean**: Do not commit unrelated generated files, raw benchmark outputs (`benchmark/results/raw/`), or temporary local caches.
+6. **Report verification in PR description**: Include the exact validation commands executed and their output summaries when opening the pull request.
+
 Before submitting a change, run:
 
 ```bash
