@@ -19,7 +19,7 @@ function context(rootDir) {
   };
 }
 
-function scan(rootDir, source, fileName = "src/app.mjs") {
+function scan(rootDir, source, fileName = "src/app.mts") {
   const filePath = path.join(rootDir, fileName);
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
   fs.writeFileSync(filePath, `${source}\n`);
@@ -47,7 +47,7 @@ test("createRequire origin recognition distinguishes globals, shadows, literals,
       "const loader = createRequire(__filename);",
       "const second = loader;",
       "second('./dep.cjs');",
-    ].join("\n"), "src/alias.mjs");
+    ].join("\n"), "src/alias.mts");
     assert.deepEqual(alias.references.map(({ specifier, resolutionBasePath }) => [specifier, resolutionBasePath]), [
       ["node:module", undefined],
       ["./dep.cjs", undefined],
@@ -56,11 +56,11 @@ test("createRequire origin recognition distinguishes globals, shadows, literals,
 
     const shadowedFilename = scan(rootDir, [
       "import { createRequire } from 'node:module';",
-      "function load(__filename) {",
+      "function load(__filename: string) {",
       "  const loader = createRequire(__filename);",
       "  return loader('./dep.cjs');",
       "}",
-    ].join("\n"), "src/shadowed-filename.mjs");
+    ].join("\n"), "src/shadowed-filename.mts");
     assert.deepEqual(shadowedFilename.references.map((reference) => reference.specifier), ["node:module"]);
     assert.equal(shadowedFilename.warnings.length, 1);
     assert.equal(shadowedFilename.warnings[0].severity, "warning");
@@ -70,7 +70,7 @@ test("createRequire origin recognition distinguishes globals, shadows, literals,
       "import { createRequire } from 'node:module';",
       "const loader = createRequire('./relative.cjs');",
       "loader('./dep.cjs');",
-    ].join("\n"), "src/relative.mjs");
+    ].join("\n"), "src/relative.mts");
     assert.deepEqual(relativeLiteral.references.map((reference) => reference.specifier), ["node:module"]);
     assert.equal(relativeLiteral.warnings.length, 1);
     assert.equal(relativeLiteral.warnings[0].severity, "warning");
@@ -79,7 +79,7 @@ test("createRequire origin recognition distinguishes globals, shadows, literals,
       "import { createRequire } from 'node:module';",
       "const loader = createRequire(new URL('./base.cjs', import.meta.url));",
       "loader('./dep.cjs');",
-    ].join("\n"), "src/url-base.mjs");
+    ].join("\n"), "src/url-base.mts");
     assert.deepEqual(urlBase.references.map(({ specifier, resolutionBasePath }) => [specifier, resolutionBasePath]), [
       ["node:module", undefined],
       ["./dep.cjs", "src/base.cjs"],
@@ -90,7 +90,7 @@ test("createRequire origin recognition distinguishes globals, shadows, literals,
       "import { createRequire } from 'node:module';",
       "const loader = createRequire(new URL('file:///tmp/cellfence-base.cjs'));",
       "loader('./dep.cjs');",
-    ].join("\n"), "src/url-single.mjs");
+    ].join("\n"), "src/url-single.mts");
     assert.equal(urlSingleArgument.references.length, 2);
     assert.equal(urlSingleArgument.references[1].specifier, "./dep.cjs");
     assert.match(urlSingleArgument.references[1].resolutionBasePath, /tmp\/cellfence-base\.cjs$/);
@@ -98,20 +98,21 @@ test("createRequire origin recognition distinguishes globals, shadows, literals,
 
     const shadowedUrl = scan(rootDir, [
       "import { createRequire } from 'node:module';",
-      "function load(URL) {",
-      "  const loader = createRequire(new URL('./base.cjs', import.meta.url));",
+      "function load(URL: new (...args: unknown[]) => unknown) {",
+      "  const loader = createRequire(new URL('./base.cjs', import.meta.url) as never);",
       "  return loader('./dep.cjs');",
       "}",
-    ].join("\n"), "src/shadowed-url.mjs");
+    ].join("\n"), "src/shadowed-url.mts");
     assert.deepEqual(shadowedUrl.references.map((reference) => reference.specifier), ["node:module"]);
     assert.equal(shadowedUrl.warnings.length, 1);
     assert.equal(shadowedUrl.warnings[0].severity, "warning");
 
     const wrongNew = scan(rootDir, [
       "import { createRequire } from 'node:module';",
-      "const loader = createRequire(new NotURL('./base.cjs', import.meta.url));",
+      "declare const NotURL: new (...args: unknown[]) => unknown;",
+      "const loader = createRequire(new NotURL('./base.cjs', import.meta.url) as never);",
       "loader('./dep.cjs');",
-    ].join("\n"), "src/not-url.mjs");
+    ].join("\n"), "src/not-url.mts");
     assert.deepEqual(wrongNew.references.map((reference) => reference.specifier), ["node:module"]);
     assert.equal(wrongNew.warnings.length, 1);
   } finally {
@@ -125,7 +126,7 @@ test("createRequire forwarding preserves resolution bases across direct, call, a
     const direct = scan(rootDir, [
       "import { createRequire } from 'node:module';",
       "createRequire(new URL('./base.cjs', import.meta.url))('./direct.cjs');",
-    ].join("\n"), "src/direct.mjs");
+    ].join("\n"), "src/direct.mts");
     assert.deepEqual(direct.references.map(({ specifier, resolutionBasePath }) => [specifier, resolutionBasePath]), [
       ["node:module", undefined],
       ["./direct.cjs", "src/base.cjs"],
@@ -137,7 +138,7 @@ test("createRequire forwarding preserves resolution bases across direct, call, a
       "loader.call(null, './call.cjs');",
       "loader.apply(null, ['./apply.cjs']);",
       "Reflect.apply(loader, null, ['./reflect.cjs']);",
-    ].join("\n"), "src/forwarded.mjs");
+    ].join("\n"), "src/forwarded.mts");
     assert.deepEqual(forwarded.references.map(({ specifier, resolutionBasePath }) => [specifier, resolutionBasePath]), [
       ["node:module", undefined],
       ["./call.cjs", "src/base.cjs"],
@@ -151,10 +152,10 @@ test("createRequire forwarding preserves resolution bases across direct, call, a
       "declare const origin: string;",
       "const loader = createRequire(origin);",
       "const allowed = new Set(['./guarded.cjs']);",
-      "export function load(candidate) {",
+      "export function load(candidate: string) {",
       "  if (allowed.has(candidate)) return loader(candidate);",
       "}",
-    ].join("\n"), "src/guarded.mjs");
+    ].join("\n"), "src/guarded.mts");
     assert.deepEqual(guarded.references.map((reference) => reference.specifier), ["node:module"]);
     assert.equal(guarded.warnings.length, 1);
     assert.equal(guarded.warnings[0].severity, "warning");
