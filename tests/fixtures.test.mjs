@@ -150,3 +150,65 @@ test("fixture inventory meets initial conformance floor", () => {
   assert.ok(fixtureDirectories("valid").length >= 10);
   assert.ok(fixtureDirectories("invalid").length >= 15);
 });
+
+test("fixture directories maintain hygiene", () => {
+  for (const group of ["valid", "invalid"]) {
+    for (const fixturePath of fixtureDirectories(group)) {
+      const fixtureName = path.relative(path.join(root, "fixtures"), fixturePath);
+      const readmePath = path.join(fixturePath, "README.md");
+      const manifestPath = path.join(fixturePath, "cellfence.manifest.json");
+      const expectedPath = path.join(fixturePath, "expected-result.json");
+
+      assert.ok(
+        fs.existsSync(readmePath),
+        `Fixture ${fixtureName} is missing README.md (${readmePath})`,
+      );
+      assert.ok(
+        fs.existsSync(manifestPath),
+        `Fixture ${fixtureName} is missing cellfence.manifest.json (${manifestPath})`,
+      );
+      assert.ok(
+        fs.existsSync(expectedPath),
+        `Fixture ${fixtureName} is missing expected-result.json (${expectedPath})`,
+      );
+
+      const expected = JSON.parse(fs.readFileSync(expectedPath, "utf8"));
+      assert.equal(
+        typeof expected.ok,
+        "boolean",
+        `Fixture ${fixtureName} expected-result.json must define boolean 'ok'`,
+      );
+      assert.ok(
+        Array.isArray(expected.errorRuleIds),
+        `Fixture ${fixtureName} expected-result.json must define errorRuleIds as an array`,
+      );
+      assert.ok(
+        Array.isArray(expected.warningRuleIds),
+        `Fixture ${fixtureName} expected-result.json must define warningRuleIds as an array`,
+      );
+      assert.ok(
+        expected.evidencePaths === undefined || Array.isArray(expected.evidencePaths),
+        `Fixture ${fixtureName} expected-result.json evidencePaths must be an array when present`,
+      );
+
+      const readmeContent = fs.readFileSync(readmePath, "utf8");
+      const readmeWords = readmeContent.trim().split(/\s+/).filter(Boolean);
+      assert.ok(
+        readmeWords.length >= 5,
+        `Fixture ${fixtureName} README.md should mention the covered rule or scenario`,
+      );
+    }
+  }
+});
+
+test("fixture index references existing paths", () => {
+  const indexFile = path.join(root, "fixtures", "README.md");
+  assert.ok(fs.existsSync(indexFile), "fixtures/README.md should exist");
+  const content = fs.readFileSync(indexFile, "utf8");
+  const matches = [...content.matchAll(/fixtures\/(?:valid|invalid)\/[a-z0-9-]+/gu)];
+  assert.ok(matches.length > 0, "fixtures/README.md should list fixtures");
+  for (const match of matches) {
+    const fixturePath = path.join(root, match[0]);
+    assert.ok(fs.existsSync(fixturePath), `Fixture path should exist: ${fixturePath}`);
+  }
+});
