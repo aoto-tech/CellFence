@@ -2,6 +2,9 @@
 
 <!-- Moved from README.md to keep the repository root README concise. -->
 
+For representative valid and invalid test fixtures demonstrating these rules, see the [Fixture Index](../fixtures/README.md).
+
+
 
 | Rule ID | What it detects |
 |---|---|
