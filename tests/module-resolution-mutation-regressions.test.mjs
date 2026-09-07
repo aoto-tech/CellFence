@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 import test from "node:test";
 
 import {
@@ -86,14 +87,15 @@ test("createRequire origin recognition distinguishes globals, shadows, literals,
     ]);
     assert.deepEqual(urlBase.warnings, []);
 
+    const urlSingleBasePath = path.join(rootDir, "src/url-single-base.cjs");
     const urlSingleArgument = scan(rootDir, [
       "import { createRequire } from 'node:module';",
-      "const loader = createRequire(new URL('file:///tmp/cellfence-base.cjs'));",
+      `const loader = createRequire(new URL(${JSON.stringify(pathToFileURL(urlSingleBasePath).href)}));`,
       "loader('./dep.cjs');",
     ].join("\n"), "src/url-single.mts");
     assert.equal(urlSingleArgument.references.length, 2);
     assert.equal(urlSingleArgument.references[1].specifier, "./dep.cjs");
-    assert.match(urlSingleArgument.references[1].resolutionBasePath, /tmp\/cellfence-base\.cjs$/);
+    assert.equal(urlSingleArgument.references[1].resolutionBasePath, "src/url-single-base.cjs");
     assert.deepEqual(urlSingleArgument.warnings, []);
 
     const shadowedUrl = scan(rootDir, [
