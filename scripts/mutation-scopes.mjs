@@ -192,7 +192,10 @@ export const MUTATION_SCOPES = Object.freeze([
       "packages/engine/src/python-inspector-runner.ts",
     ],
     mutate: "packages/engine/dist/module-resolution.js",
-    tests: ["tests/module-resolution.test.mjs"],
+    tests: [
+      "tests/module-resolution.test.mjs",
+      "tests/module-resolution-mutation-regressions.test.mjs",
+    ],
     parallelConcurrency: 2,
   },
   {
