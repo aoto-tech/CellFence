@@ -157,7 +157,8 @@ Diagnostics explain the observed import and the manifest contract CellFence appl
 - Undeclared artifact lane consumption between producer and consumer cells
 - Silent architecture growth against an accepted baseline — `CELLFENCE_RATCHET_*`
 
-Full rule reference: [docs/rules.md](docs/rules.md).
+Full rule reference: [docs/rules.md](docs/rules.md). Package ownership map:
+[docs/package-ownership.md](docs/package-ownership.md).
 
 ## The ratchet: no self-authorized growth
 
