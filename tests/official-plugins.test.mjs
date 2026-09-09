@@ -2465,6 +2465,56 @@ test("opentelemetry adapter ignores non-string wrapped values without throwing",
   }]);
 });
 
+test("opentelemetry adapter converts HTTP SERVER spans to access: serve", () => {
+  const evidence = openTelemetryToResourceEvidence({
+    resourceSpans: [{
+      scopeSpans: [{
+        spans: [
+          {
+            name: "GET /users",
+            kind: 2,
+            attributes: [
+              { key: "http.route", value: { stringValue: "/users" } },
+              { key: "http.request.method", value: { stringValue: "GET" } },
+            ],
+          },
+          {
+            name: "POST /orders",
+            kind: "SPAN_KIND_SERVER",
+            attributes: [
+              { key: "http.route", value: { stringValue: "/orders" } },
+              { key: "http.request.method", value: { stringValue: "POST" } },
+            ],
+          },
+          {
+            name: "GET /client-users",
+            kind: 3,
+            attributes: [
+              { key: "http.route", value: { stringValue: "/client-users" } },
+              { key: "http.request.method", value: { stringValue: "GET" } },
+            ],
+          },
+          {
+            name: "GET /explicit-override",
+            kind: 2,
+            attributes: [
+              { key: "http.route", value: { stringValue: "/explicit-override" } },
+              { key: "cellfence.resource.operation", value: { stringValue: "call" } },
+            ],
+          },
+        ],
+      }],
+    }],
+  }, { generatedAt: "2026-01-01T00:00:00.000Z" });
+
+  assert.deepEqual(evidence.accesses.map((access) => `${access.kind}:${access.access}:${access.selector}`), [
+    "http:serve:/users",
+    "http:serve:/orders",
+    "http:call:/client-users",
+    "http:call:/explicit-override",
+  ]);
+});
+
 test("declarative call-pattern adapter records dynamic resource arguments as unresolved", () => {
   const rootDir = fs.mkdtempSync(path.join(os.tmpdir(), "cellfence-call-pattern-dynamic-"));
   try {

@@ -16,6 +16,7 @@ export type OpenTelemetryEvidenceOptions = {
 
 type SpanLike = {
   name?: unknown;
+  kind?: unknown;
   attributes?: unknown;
 };
 
@@ -38,11 +39,19 @@ function normalizeKind(value: string | undefined): ResourceContractKind | undefi
   return undefined;
 }
 
-function normalizeOperation(kind: ResourceContractKind, value: string | undefined): ResourceAccessMode {
+function isServerSpanKind(kind: unknown): boolean {
+  return kind === 2 || kind === "2" || kind === "SPAN_KIND_SERVER" || kind === "SERVER";
+}
+
+function normalizeOperation(kind: ResourceContractKind, value: string | undefined, spanKind?: unknown): ResourceAccessMode {
   if (value === "read" || value === "write" || value === "publish" || value === "subscribe" || value === "call" || value === "serve") return value;
   if (kind === "database") return value && /insert|update|delete|write|upsert|merge|truncate|drop|create|alter|replace|grant|revoke/i.test(value) ? "write" : "read";
   if (kind === "queue") return value && /receive|consume|subscribe/i.test(value) ? "subscribe" : "publish";
-  if (kind === "http") return value && /server|serve/i.test(value) ? "serve" : "call";
+  if (kind === "http") {
+    if (value && /server|serve/i.test(value)) return "serve";
+    if (isServerSpanKind(spanKind)) return "serve";
+    return "call";
+  }
   return value && /write/i.test(value) ? "write" : "read";
 }
 
@@ -99,7 +108,14 @@ function accessFromSpan(span: SpanLike, options: OpenTelemetryEvidenceOptions): 
   if (!selector) return undefined;
   return {
     kind: inferredKind,
-    access: normalizeOperation(inferredKind, stringAttribute(attributes, "cellfence.resource.operation") || stringAttribute(attributes, "db.operation") || stringAttribute(attributes, "messaging.operation") || stringAttribute(attributes, "http.request.method")),
+    access: normalizeOperation(
+      inferredKind,
+      stringAttribute(attributes, "cellfence.resource.operation")
+      || stringAttribute(attributes, "db.operation")
+      || stringAttribute(attributes, "messaging.operation")
+      || stringAttribute(attributes, "http.request.method"),
+      span.kind,
+    ),
     selector,
     cellId: stringAttribute(attributes, "cellfence.cell") || stringAttribute(attributes, "cell.id") || stringAttribute(attributes, "service.name") || options.defaultCellId,
     observedAt: stringAttribute(attributes, "time") || options.generatedAt,
