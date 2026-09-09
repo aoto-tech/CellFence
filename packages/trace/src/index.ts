@@ -160,10 +160,18 @@ function recordFileAccess(access: "read" | "write", selector: fs.PathOrFileDescr
 }
 
 function fetchSelector(input: Parameters<typeof fetch>[0]): string | undefined {
-  if (typeof input === "string") return input;
-  if (input instanceof URL) return input.toString();
-  if (typeof Request !== "undefined" && input instanceof Request) return input.url;
-  return undefined;
+  let raw: string | undefined;
+  if (typeof input === "string") raw = input;
+  else if (input instanceof URL) raw = input.toString();
+  else if (typeof Request !== "undefined" && input instanceof Request) raw = input.url;
+  if (!raw) return undefined;
+  try {
+    const parsed = new URL(raw, "http://cellfence.local");
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return undefined;
+  } catch {
+    return undefined;
+  }
+  return raw;
 }
 
 // 0.4.x (N-13): snapshot the disable flag at module-load time.
