@@ -3004,8 +3004,8 @@ test("module resolution extracts Python public symbols and surface hashes", () =
     );
     assert.deepEqual([...extractPublicSymbols(inferredPath)].sort(), ["Box", "VERSION", "fetch", "public_helper", "run"]);
     const expectedParts = [
+      "py:async_function:fetch(value,limit=1)",
       "py:class:Box(Base)",
-      "py:function:fetch(value,limit=1)",
       "py:function:run(value)",
       "py:import:public_helper",
       "py:variable:VERSION:str",

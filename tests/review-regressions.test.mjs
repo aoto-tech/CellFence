@@ -561,3 +561,71 @@ test("bug #61 empty Changed-Cells is checked against actual ownership", (testCon
   git(rootDir, ["add", "."]); git(rootDir, ["commit", "-qm", message("none")]);
   assert.equal(checkCommitEvidence({ rootDir, manifest, commit: "HEAD" }).ok, true);
 });
+
+test("bug #76 Python public surface hashes differentiate async, type annotations, and class methods", () => {
+  const rootDir = fs.mkdtempSync(path.join(os.tmpdir(), "cellfence-bug-76-"));
+  try {
+    const filePath = path.join(rootDir, "api.py");
+    // Pair 1: sync vs async
+    writeFile(filePath, ["def api(value):", "    return value"]);
+    const syncHash = publicSurfaceHash(filePath);
+    const syncParts = inspectPythonSource(filePath).surfaceParts;
+    assert.deepEqual(syncParts, ["py:function:api(value)"]);
+
+    writeFile(filePath, ["async def api(value):", "    return value"]);
+    const asyncHash = publicSurfaceHash(filePath);
+    const asyncParts = inspectPythonSource(filePath).surfaceParts;
+    assert.deepEqual(asyncParts, ["py:async_function:api(value)"]);
+    assert.notEqual(asyncHash, syncHash);
+
+    // Pair 2: type annotations
+    writeFile(filePath, ["def api(value: str) -> str:", "    return value"]);
+    const strHash = publicSurfaceHash(filePath);
+    const strParts = inspectPythonSource(filePath).surfaceParts;
+    assert.deepEqual(strParts, ["py:function:api(value:str):str"]);
+
+    writeFile(filePath, ["def api(value: int) -> int:", "    return value"]);
+    const intHash = publicSurfaceHash(filePath);
+    const intParts = inspectPythonSource(filePath).surfaceParts;
+    assert.deepEqual(intParts, ["py:function:api(value:int):int"]);
+    assert.notEqual(intHash, strHash);
+
+    // Pair 3: class methods
+    writeFile(filePath, [
+      "class Api:",
+      "    def fetch(self, value):",
+      "        return value",
+    ]);
+    const classHash1 = publicSurfaceHash(filePath);
+    const classParts1 = inspectPythonSource(filePath).surfaceParts;
+    assert.deepEqual(classParts1, [
+      "py:class:Api()",
+      "py:class_member:Api.method:fetch(self,value)",
+    ]);
+
+    writeFile(filePath, [
+      "class Api:",
+      "    def fetch(self, value, required):",
+      "        return required",
+    ]);
+    const classHash2 = publicSurfaceHash(filePath);
+    const classParts2 = inspectPythonSource(filePath).surfaceParts;
+    assert.deepEqual(classParts2, [
+      "py:class:Api()",
+      "py:class_member:Api.method:fetch(self,value,required)",
+    ]);
+    assert.notEqual(classHash2, classHash1);
+
+    // Changes confined to function body should not change the hash
+    writeFile(filePath, [
+      "class Api:",
+      "    def fetch(self, value, required):",
+      "        # Internal comment or changed body logic",
+      "        temp = value + required",
+      "        return temp",
+    ]);
+    assert.equal(publicSurfaceHash(filePath), classHash2);
+  } finally {
+    fs.rmSync(rootDir, { recursive: true, force: true });
+  }
+});

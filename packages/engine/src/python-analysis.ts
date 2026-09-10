@@ -249,25 +249,49 @@ def alias_public_name(alias):
         return alias.asname
     return alias.name.split(".")[0]
 
+def format_arg(arg, default=None):
+    res = arg.arg
+    if getattr(arg, "annotation", None) is not None:
+        res += ":" + unparse(arg.annotation)
+    if default is not None:
+        res += "=" + unparse(default)
+    return res
+
 def function_signature(args):
     positional_defaults = [None] * (len(args.posonlyargs) + len(args.args) - len(args.defaults)) + list(args.defaults)
     pieces = []
     for arg, default in zip(args.posonlyargs, positional_defaults[:len(args.posonlyargs)]):
-        pieces.append(arg.arg + (("=" + unparse(default)) if default is not None else ""))
+        pieces.append(format_arg(arg, default))
     if args.posonlyargs:
         pieces.append("/")
     offset = len(args.posonlyargs)
     for arg, default in zip(args.args, positional_defaults[offset:]):
-        pieces.append(arg.arg + (("=" + unparse(default)) if default is not None else ""))
+        pieces.append(format_arg(arg, default))
     if args.vararg is not None:
-        pieces.append("*" + args.vararg.arg)
+        pieces.append("*" + format_arg(args.vararg))
     elif args.kwonlyargs:
         pieces.append("*")
     for arg, default in zip(args.kwonlyargs, args.kw_defaults):
-        pieces.append(arg.arg + (("=" + unparse(default)) if default is not None else ""))
+        pieces.append(format_arg(arg, default))
     if args.kwarg is not None:
-        pieces.append("**" + args.kwarg.arg)
+        pieces.append("**" + format_arg(args.kwarg))
     return ",".join(pieces)
+
+def function_surface_part(node):
+    prefix = "py:async_function:" if isinstance(node, ast.AsyncFunctionDef) else "py:function:"
+    ret = (":" + unparse(node.returns)) if getattr(node, "returns", None) is not None else ""
+    return prefix + node.name + "(" + function_signature(node.args) + ")" + ret
+
+def class_surface_parts(node):
+    bases = ",".join([unparse(base) for base in node.bases])
+    parts = ["py:class:" + node.name + "(" + bases + ")"]
+    for item in node.body:
+        if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            if (bool(item.name) and not item.name.startswith("_")) or item.name == "__init__":
+                method_prefix = "async_method:" if isinstance(item, ast.AsyncFunctionDef) else "method:"
+                ret = (":" + unparse(item.returns)) if getattr(item, "returns", None) is not None else ""
+                parts.append("py:class_member:" + node.name + "." + method_prefix + item.name + "(" + function_signature(item.args) + ")" + ret)
+    return parts
 
 imports = []
 import_keys = set()
@@ -277,9 +301,11 @@ top_level_public = set()
 surface_parts = []
 
 def surface_part_name(part):
-    for prefix in ("py:function:", "py:class:"):
+    for prefix in ("py:async_function:", "py:function:", "py:class:"):
         if part.startswith(prefix):
             return part[len(prefix):].split("(", 1)[0]
+    if part.startswith("py:class_member:"):
+        return part[len("py:class_member:"):].split(".", 1)[0]
     if part.startswith("py:variable:"):
         return part[len("py:variable:"):].split(":", 1)[0]
     if part.startswith("py:import:"):
@@ -346,13 +372,11 @@ for node in tree.body:
     elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
         if is_public(node.name):
             top_level_public.add(node.name)
-            surface_parts.append("py:function:" + node.name + "(" + function_signature(node.args) + ")")
+            surface_parts.append(function_surface_part(node))
     elif isinstance(node, ast.ClassDef):
         if is_public(node.name):
             top_level_public.add(node.name)
-            bases = ",".join([unparse(base) for base in node.bases])
-            top_level_public.add(node.name)
-            surface_parts.append("py:class:" + node.name + "(" + bases + ")")
+            surface_parts.extend(class_surface_parts(node))
     elif isinstance(node, ast.Assign):
         names = []
         for target in node.targets:
