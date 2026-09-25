@@ -12,7 +12,7 @@ For representative valid and invalid test fixtures demonstrating these rules, se
 | `CELLFENCE_PATTERN_MATCHES_NOTHING` | Manifest-declared include, exclude, ownership, public path, or non-external artifact pattern matched no repository files |
 | `CELLFENCE_SUSPICIOUS_GLOB_PATTERN` | Manifest pattern contains a glob segment such as `***` that is usually a `**` typo and changes depth semantics |
 | `CELLFENCE_DUPLICATE_CELL_ID` | Duplicate cell identifiers |
-| `CELLFENCE_OWNERSHIP_OVERLAP` | Overlapping declared ownership paths |
+| `CELLFENCE_OWNERSHIP_OVERLAP` | Overlapping declared ownership paths. [Walkthrough](#cellfence_ownership_overlap-walkthrough) |
 | `CELLFENCE_OWNERSHIP_COVERAGE_DISABLED` | Strict ownership coverage is disabled, so source outside ownedPaths can escape checks |
 | `CELLFENCE_UNOWNED_SOURCE` | Strict governance found source matched by `governance.include` that no cell owns |
 | `CELLFENCE_UNOWNED_IMPORT_TARGET` | A cell imports governed source that no cell owns |
@@ -81,6 +81,37 @@ For representative valid and invalid test fixtures demonstrating these rules, se
 | `CELLFENCE_DOC_UNKNOWN_CELL` | A stamped architecture document references a cell that is not in the manifest |
 | `CELLFENCE_DOC_SURFACE_STALE` | A stamped architecture document no longer matches the current cell public surface |
 | `CELLFENCE_MUTATION_SCORE_BELOW_THRESHOLD` | Mutation testing score is below the configured minimum |
+
+## `CELLFENCE_OWNERSHIP_OVERLAP` walkthrough
+
+The
+[`owned-path-overlap`](../fixtures/invalid/owned-path-overlap/README.md)
+fixture demonstrates two cells whose ownership patterns claim the same source
+path. Its
+[`cellfence.manifest.json`](../fixtures/invalid/owned-path-overlap/cellfence.manifest.json)
+declares a `wide` cell owning `src/shared/**` and a `narrow` cell owning
+`src/shared/narrow/**`.
+
+That means
+[`src/shared/narrow/public.ts`](../fixtures/invalid/owned-path-overlap/src/shared/narrow/public.ts)
+matches both ownership declarations: the broad `wide` pattern includes the
+nested directory while the `narrow` pattern claims it explicitly. CellFence
+therefore reports `CELLFENCE_OWNERSHIP_OVERLAP` instead of choosing an owner
+implicitly.
+
+Build the CLI and reproduce the finding from the repository root:
+
+```bash
+npm run build
+node packages/cli/dist/index.js check \
+  --root fixtures/invalid/owned-path-overlap \
+  --format markdown
+```
+
+The intentionally invalid fixture exits unsuccessfully and reports
+`CELLFENCE_OWNERSHIP_OVERLAP`. Its
+[`expected-result.json`](../fixtures/invalid/owned-path-overlap/expected-result.json)
+also records the expected `CELLFENCE_OWNERSHIP_COVERAGE_DISABLED` warning.
 
 ## `CELLFENCE_UNDECLARED_CONSUMER` walkthrough
 
