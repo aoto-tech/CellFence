@@ -488,6 +488,10 @@ Version 0.x is deliberately narrow: Node.js ≥ 20; one public entry per cell; r
 | First frozen corpus pilot | [docs/research/ts-js-workspace-pilot-2026-07-18.md](docs/research/ts-js-workspace-pilot-2026-07-18.md) |
 | Python framework onboarding run | [docs/research/oss-python-framework-800-2026-07-18.md](docs/research/oss-python-framework-800-2026-07-18.md) |
 
+## Translated quickstarts
+
+- [Español / Spanish](docs/i18n/es/quickstart.md)
+
 ## Contributing, security, license
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) and [SECURITY.md](SECURITY.md). Apache-2.0, see [LICENSE](LICENSE).
