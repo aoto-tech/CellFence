@@ -12,7 +12,7 @@ For representative valid and invalid test fixtures demonstrating these rules, se
 | `CELLFENCE_PATTERN_MATCHES_NOTHING` | Manifest-declared include, exclude, ownership, public path, or non-external artifact pattern matched no repository files |
 | `CELLFENCE_SUSPICIOUS_GLOB_PATTERN` | Manifest pattern contains a glob segment such as `***` that is usually a `**` typo and changes depth semantics |
 | `CELLFENCE_DUPLICATE_CELL_ID` | Duplicate cell identifiers |
-| `CELLFENCE_OWNERSHIP_OVERLAP` | Overlapping declared ownership paths |
+| `CELLFENCE_OWNERSHIP_OVERLAP` | Overlapping declared ownership paths. [Walkthrough](#cellfence_ownership_overlap-walkthrough) |
 | `CELLFENCE_OWNERSHIP_COVERAGE_DISABLED` | Strict ownership coverage is disabled, so source outside ownedPaths can escape checks |
 | `CELLFENCE_UNOWNED_SOURCE` | Strict governance found source matched by `governance.include` that no cell owns |
 | `CELLFENCE_UNOWNED_IMPORT_TARGET` | A cell imports governed source that no cell owns |
@@ -81,6 +81,65 @@ For representative valid and invalid test fixtures demonstrating these rules, se
 | `CELLFENCE_DOC_UNKNOWN_CELL` | A stamped architecture document references a cell that is not in the manifest |
 | `CELLFENCE_DOC_SURFACE_STALE` | A stamped architecture document no longer matches the current cell public surface |
 | `CELLFENCE_MUTATION_SCORE_BELOW_THRESHOLD` | Mutation testing score is below the configured minimum |
+
+## `CELLFENCE_OWNERSHIP_OVERLAP` walkthrough
+
+The
+[`owned-path-overlap`](../fixtures/invalid/owned-path-overlap/README.md)
+fixture demonstrates an invalid manifest configuration where multiple cells
+declare overlapping ownership paths.
+
+In CellFence, cells are the fundamental units of architecture and boundary
+enforcement. Every governed file must belong unambiguously to at most one cell
+so CellFence can determine which cell's boundary rules, public entry contracts,
+and consumer permissions apply. When two cells declare overlapping `ownedPaths`
+patterns, any file falling within the intersection would have ambiguous
+ownership, violating this architectural contract.
+
+In the fixture's
+[`cellfence.manifest.json`](../fixtures/invalid/owned-path-overlap/cellfence.manifest.json):
+- Cell `wide` declares `ownedPaths: ["src/shared/**"]` with public entry
+  [`src/shared/public.ts`](../fixtures/invalid/owned-path-overlap/src/shared/public.ts).
+- Cell `narrow` declares `ownedPaths: ["src/shared/narrow/**"]` with public entry
+  [`src/shared/narrow/public.ts`](../fixtures/invalid/owned-path-overlap/src/shared/narrow/public.ts).
+
+Because `src/shared/narrow/**` is a subpath of `src/shared/**`, files under
+`src/shared/narrow/` match both cells' declared ownership patterns. CellFence
+statically checks declared ownership glob patterns and detects the intersection.
+
+Build the CLI and reproduce the finding from the repository root:
+
+```bash
+npm run build
+node packages/cli/dist/index.js check \
+  --root fixtures/invalid/owned-path-overlap \
+  --format markdown
+```
+
+The intentionally invalid fixture exits unsuccessfully and reports
+`CELLFENCE_OWNERSHIP_OVERLAP` for the overlapping patterns:
+
+```markdown
+# CellFence Check
+
+**Result:** failed
+
+| Metric | Value |
+|---|---:|
+| Findings | 1 |
+| Warnings | 1 |
+| Changed files | 0 |
+| Impacted cells | 1 |
+
+| Severity | Rule | Location | Cell | Message |
+|---|---|---|---|---|
+| error | `CELLFENCE_OWNERSHIP_OVERLAP` | (repository) | wide | owned path patterns overlap: wide:src/shared/** and narrow:src/shared/narrow/** |
+| warning | `CELLFENCE_OWNERSHIP_COVERAGE_DISABLED` | (repository) |  | strict ownership coverage is disabled; source outside ownedPaths can escape CellFence checks |
+```
+
+The fixture's
+[`expected-result.json`](../fixtures/invalid/owned-path-overlap/expected-result.json)
+also records the expected `CELLFENCE_OWNERSHIP_COVERAGE_DISABLED` warning.
 
 ## `CELLFENCE_UNDECLARED_CONSUMER` walkthrough
 
