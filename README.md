@@ -27,7 +27,18 @@ A typical failure looks like this:
 import { tokenizeInternal } from "../parser/internal/tokenizer";
 ```
 
-The code can compile. The tests can pass. The PR can still be wrong: `reporting` reached into `parser` internals instead of using the declared public entry.
+The PR can still be wrong: `reporting` reached into `parser` internals instead of using the declared public entry. You can verify that standard project checks still succeed, while CellFence blocks the architectural violation:
+
+```bash
+npm run test
+# Tests pass: ✔ buildReport calculates token count
+
+npx tsc
+# Typecheck passes: 0 errors
+
+npx cellfence check --manifest cellfence.manifest.json
+# Fails with CELLFENCE_PRIVATE_IMPORT
+```
 
 ```text
 CellFence check failed.
