@@ -531,7 +531,7 @@ test("trace hook records URL and Request fetch inputs", () => {
 test("trace hook ignores fetch inputs that do not expose a URL selector", () => {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "cellfence-trace-fetch-unknown-"));
   fs.writeFileSync(path.join(tempDir, "app.mjs"), `
-    for (const input of [{}, { url: "https://example.invalid/not-a-request" }]) {
+    for (const input of ["", {}, { url: "https://example.invalid/not-a-request" }]) {
       try {
         await fetch(input);
       } catch {}
@@ -556,6 +556,50 @@ test("trace hook ignores fetch inputs that do not expose a URL selector", () => 
   const evidence = JSON.parse(fs.readFileSync(evidencePath, "utf8"));
   assert.equal(evidence.transcriptStatus, "active");
   assert.deepEqual(evidence.accesses, []);
+});
+
+test("trace hook ignores fetch calls with non-HTTP schemes like data: URLs", () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "cellfence-trace-fetch-non-http-"));
+  fs.writeFileSync(path.join(tempDir, "app.mjs"), `
+    try {
+      await fetch("data:text/plain,hello");
+    } catch {}
+    try {
+      await fetch(new URL("data:application/json,%7B%22ok%22%3Atrue%7D"));
+    } catch {}
+    try {
+      await fetch("http://example.invalid/plain-http");
+    } catch {}
+    try {
+      await fetch("https://example.invalid/valid-http");
+    } catch {}
+    try {
+      await fetch("http://[invalid-ipv6]/bad-url-parse");
+    } catch {}
+  `);
+
+  const evidencePath = path.join(tempDir, "resource-evidence.json");
+  const result = spawnSync(process.execPath, [
+    "--import",
+    pathToFileURL(tracePath).href,
+    "app.mjs",
+  ], {
+    cwd: tempDir,
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      CELLFENCE_TRACE_CELL: "runtime",
+      CELLFENCE_TRACE_OUT: evidencePath,
+    },
+  });
+
+  assert.equal(result.status, 0, result.stderr);
+  const evidence = JSON.parse(fs.readFileSync(evidencePath, "utf8"));
+  assert.equal(evidence.transcriptStatus, "active");
+  assert.deepEqual(evidence.accesses.map((access) => access.selector), [
+    "http://example.invalid/plain-http",
+    "https://example.invalid/valid-http",
+  ]);
 });
 
 test("trace hook covers default cell/output and fd based skips", () => {
