@@ -252,21 +252,30 @@ def alias_public_name(alias):
 def function_signature(args):
     positional_defaults = [None] * (len(args.posonlyargs) + len(args.args) - len(args.defaults)) + list(args.defaults)
     pieces = []
+    
+    def fmt_arg(arg, default=None):
+        r = arg.arg
+        if getattr(arg, "annotation", None):
+            r += ":" + unparse(arg.annotation)
+        if default is not None:
+            r += "=" + unparse(default)
+        return r
+
     for arg, default in zip(args.posonlyargs, positional_defaults[:len(args.posonlyargs)]):
-        pieces.append(arg.arg + (("=" + unparse(default)) if default is not None else ""))
+        pieces.append(fmt_arg(arg, default))
     if args.posonlyargs:
         pieces.append("/")
     offset = len(args.posonlyargs)
     for arg, default in zip(args.args, positional_defaults[offset:]):
-        pieces.append(arg.arg + (("=" + unparse(default)) if default is not None else ""))
-    if args.vararg is not None:
-        pieces.append("*" + args.vararg.arg)
-    elif args.kwonlyargs:
+        pieces.append(fmt_arg(arg, default))
+    if getattr(args, "vararg", None) is not None:
+        pieces.append("*" + fmt_arg(args.vararg))
+    elif getattr(args, "kwonlyargs", None):
         pieces.append("*")
     for arg, default in zip(args.kwonlyargs, args.kw_defaults):
-        pieces.append(arg.arg + (("=" + unparse(default)) if default is not None else ""))
-    if args.kwarg is not None:
-        pieces.append("**" + args.kwarg.arg)
+        pieces.append(fmt_arg(arg, default))
+    if getattr(args, "kwarg", None) is not None:
+        pieces.append("**" + fmt_arg(args.kwarg))
     return ",".join(pieces)
 
 imports = []
@@ -346,13 +355,25 @@ for node in tree.body:
     elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
         if is_public(node.name):
             top_level_public.add(node.name)
-            surface_parts.append("py:function:" + node.name + "(" + function_signature(node.args) + ")")
+            prefix = "async " if isinstance(node, ast.AsyncFunctionDef) else ""
+            ret = unparse(node.returns)
+            ret_str = ("->" + ret) if ret else ""
+            surface_parts.append("py:function:" + prefix + node.name + "(" + function_signature(node.args) + ")" + ret_str)
     elif isinstance(node, ast.ClassDef):
         if is_public(node.name):
             top_level_public.add(node.name)
             bases = ",".join([unparse(base) for base in node.bases])
+            methods = []
+            for body_node in node.body:
+                if isinstance(body_node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    if not body_node.name.startswith("_") or body_node.name == "__init__":
+                        prefix = "async " if isinstance(body_node, ast.AsyncFunctionDef) else ""
+                        ret = unparse(body_node.returns)
+                        ret_str = ("->" + ret) if ret else ""
+                        methods.append(prefix + body_node.name + "(" + function_signature(body_node.args) + ")" + ret_str)
+            method_str = "{" + ";".join(methods) + "}" if methods else ""
             top_level_public.add(node.name)
-            surface_parts.append("py:class:" + node.name + "(" + bases + ")")
+            surface_parts.append("py:class:" + node.name + "(" + bases + ")" + method_str)
     elif isinstance(node, ast.Assign):
         names = []
         for target in node.targets:

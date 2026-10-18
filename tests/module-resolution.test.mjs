@@ -3005,13 +3005,63 @@ test("module resolution extracts Python public symbols and surface hashes", () =
     assert.deepEqual([...extractPublicSymbols(inferredPath)].sort(), ["Box", "VERSION", "fetch", "public_helper", "run"]);
     const expectedParts = [
       "py:class:Box(Base)",
-      "py:function:fetch(value,limit=1)",
+      "py:function:async fetch(value,limit=1)",
       "py:function:run(value)",
       "py:import:public_helper",
       "py:variable:VERSION:str",
     ].sort((left, right) => left.localeCompare(right));
     assert.deepEqual(syntaxPublicSurfaceSignatureParts(inferredPath), expectedParts);
     assert.equal(publicSurfaceHash(inferredPath), sha256(expectedParts.join("\n")));
+  } finally {
+    fs.rmSync(rootDir, { recursive: true, force: true });
+  }
+});
+
+test("module resolution Python public API surface hashes reflect async, annotations, and class methods (#76)", () => {
+  const rootDir = fs.mkdtempSync(path.join(os.tmpdir(), "cellfence-python-api-hash-"));
+  try {
+    const fileA = path.join(rootDir, "test_a.py");
+
+    // 1. sync -> async
+    fs.writeFileSync(fileA, "def api(value):\n    return value\n");
+    const syncHash = publicSurfaceHash(fileA);
+    const syncParts = syntaxPublicSurfaceSignatureParts(fileA);
+    assert.deepEqual(syncParts, ["py:function:api(value)"]);
+
+    fs.writeFileSync(fileA, "async def api(value):\n    return value\n");
+    const asyncHash = publicSurfaceHash(fileA);
+    const asyncParts = syntaxPublicSurfaceSignatureParts(fileA);
+    assert.deepEqual(asyncParts, ["py:function:async api(value)"]);
+    assert.notEqual(syncHash, asyncHash, "sync vs async should produce different hashes");
+
+    // 2. argument / return annotation changes
+    fs.writeFileSync(fileA, "def api(value: str) -> str:\n    return value\n");
+    const annotHashStr = publicSurfaceHash(fileA);
+    const annotPartsStr = syntaxPublicSurfaceSignatureParts(fileA);
+    assert.deepEqual(annotPartsStr, ["py:function:api(value:str)->str"]);
+
+    fs.writeFileSync(fileA, "def api(value: int) -> int:\n    return value\n");
+    const annotHashInt = publicSurfaceHash(fileA);
+    const annotPartsInt = syntaxPublicSurfaceSignatureParts(fileA);
+    assert.deepEqual(annotPartsInt, ["py:function:api(value:int)->int"]);
+    assert.notEqual(annotHashStr, annotHashInt, "type annotation changes should produce different hashes");
+
+    // 3. required class-method argument change
+    fs.writeFileSync(fileA, "class Api:\n    def fetch(self, value):\n        return value\n");
+    const classMethodHash1 = publicSurfaceHash(fileA);
+    const classMethodParts1 = syntaxPublicSurfaceSignatureParts(fileA);
+    assert.deepEqual(classMethodParts1, ["py:class:Api(){fetch(self,value)}"]);
+
+    fs.writeFileSync(fileA, "class Api:\n    def fetch(self, value, required):\n        return required\n");
+    const classMethodHash2 = publicSurfaceHash(fileA);
+    const classMethodParts2 = syntaxPublicSurfaceSignatureParts(fileA);
+    assert.deepEqual(classMethodParts2, ["py:class:Api(){fetch(self,value,required)}"]);
+    assert.notEqual(classMethodHash1, classMethodHash2, "class method parameter changes should produce different hashes");
+
+    // 4. negative / control case: body-only change preserves surface parts and hash
+    fs.writeFileSync(fileA, "def api(value: str) -> str:\n    result = value.strip()\n    return result\n");
+    const bodyChangedHash = publicSurfaceHash(fileA);
+    assert.equal(annotHashStr, bodyChangedHash, "body-only changes should produce identical hashes");
   } finally {
     fs.rmSync(rootDir, { recursive: true, force: true });
   }
