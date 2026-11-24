@@ -17,7 +17,7 @@ For representative valid and invalid test fixtures demonstrating these rules, se
 | `CELLFENCE_UNOWNED_SOURCE` | Strict governance found source matched by `governance.include` that no cell owns |
 | `CELLFENCE_UNOWNED_IMPORT_TARGET` | A cell imports governed source that no cell owns |
 | `CELLFENCE_IMPORT_TARGET_OUTSIDE_ROOT` | A source import resolved to a real file outside the repository root |
-| `CELLFENCE_PUBLIC_ENTRY_OUTSIDE_OWNERSHIP` | A public entry or public path is outside the declaring cell's owned paths |
+| `CELLFENCE_PUBLIC_ENTRY_OUTSIDE_OWNERSHIP` | A public entry or public path is outside the declaring cell's owned paths [Walkthrough](#cellfence_public_entry_outside_ownership-walkthrough) |
 | `CELLFENCE_ARTIFACT_OUTSIDE_OWNERSHIP` | A non-external produced artifact lane is outside the producer's owned paths |
 | `CELLFENCE_SYMLINK_TARGET_OUTSIDE_OWNERSHIP` | A governed symlink points outside its owning cell, outside the repository, or cannot be resolved |
 | `CELLFENCE_PRIVATE_IMPORT` | Cross-cell import of private implementation |
@@ -81,6 +81,31 @@ For representative valid and invalid test fixtures demonstrating these rules, se
 | `CELLFENCE_DOC_UNKNOWN_CELL` | A stamped architecture document references a cell that is not in the manifest |
 | `CELLFENCE_DOC_SURFACE_STALE` | A stamped architecture document no longer matches the current cell public surface |
 | `CELLFENCE_MUTATION_SCORE_BELOW_THRESHOLD` | Mutation testing score is below the configured minimum |
+
+## `CELLFENCE_PUBLIC_ENTRY_OUTSIDE_OWNERSHIP` walkthrough
+
+The [fixture](../fixtures/invalid/public-entry-outside-ownership/README.md)
+declares a cell named `a`. Its
+[manifest](../fixtures/invalid/public-entry-outside-ownership/cellfence.manifest.json)
+owns only `src/a/**`, but points to
+[`api/a.ts`](../fixtures/invalid/public-entry-outside-ownership/api/a.ts) as the
+public entry. That file exists and exports the declared symbol `a`. The error
+is that the file itself falls outside the owning cell's path pattern.
+
+From the repository root, run:
+
+```bash
+npm ci
+npm run build
+node packages/cli/dist/index.js check \
+  --root fixtures/invalid/public-entry-outside-ownership \
+  --format markdown
+```
+
+The check exits with status 1 and reports
+`CELLFENCE_PUBLIC_ENTRY_OUTSIDE_OWNERSHIP` at `api/a.ts`. When diagnosing this
+error in a real repository, compare the entry path with the declaring cell's
+`ownedPaths`. Changing the export name does not change which cell owns the file.
 
 ## `CELLFENCE_UNDECLARED_CONSUMER` walkthrough
 
